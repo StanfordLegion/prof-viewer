@@ -6,7 +6,8 @@ use rand::Rng;
 use std::collections::BTreeMap;
 
 use legion_prof_viewer::data::{
-    DataSource, EntryID, EntryInfo, Field, Item, SlotTile, SummaryTile, TileID, UtilPoint,
+    DataSource, EntryID, EntryInfo, Field, Item, ItemMeta, SlotMetaTile, SlotTile, SummaryTile,
+    TileID, UtilPoint,
 };
 use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
@@ -22,7 +23,7 @@ struct RandomDataSource {
     info: Option<EntryInfo>,
     interval: Option<Interval>,
     summary_cache: BTreeMap<EntryID, Vec<UtilPoint>>,
-    slot_cache: BTreeMap<EntryID, Vec<Vec<Item>>>,
+    slot_cache: BTreeMap<EntryID, (Vec<Vec<Item>>, Vec<Vec<ItemMeta>>)>,
     rng: rand::rngs::ThreadRng,
 }
 
@@ -70,7 +71,7 @@ impl RandomDataSource {
         self.summary_cache.get(entry_id).unwrap()
     }
 
-    fn generate_slot(&mut self, entry_id: &EntryID) -> &Vec<Vec<Item>> {
+    fn generate_slot(&mut self, entry_id: &EntryID) -> &(Vec<Vec<Item>>, Vec<Vec<ItemMeta>>) {
         if !self.slot_cache.contains_key(entry_id) {
             let entry = self.fetch_info().get(entry_id);
 
@@ -81,8 +82,10 @@ impl RandomDataSource {
             };
 
             let mut items = Vec::new();
+            let mut item_metas = Vec::new();
             for row in 0..*max_rows {
                 let mut row_items = Vec::new();
+                let mut row_item_metas = Vec::new();
                 const N: u64 = 1000;
                 for i in 0..N {
                     let start = self.interval().lerp((i as f32 + 0.05) / (N as f32));
@@ -102,6 +105,8 @@ impl RandomDataSource {
                     row_items.push(Item {
                         interval: Interval::new(start, stop),
                         color,
+                    });
+                    row_item_metas.push(ItemMeta {
                         title: "Test Item".to_owned(),
                         fields: vec![(
                             "Interval".to_owned(),
@@ -110,9 +115,11 @@ impl RandomDataSource {
                     });
                 }
                 items.push(row_items);
+                item_metas.push(row_item_metas);
             }
 
-            self.slot_cache.insert(entry_id.clone(), items);
+            self.slot_cache
+                .insert(entry_id.clone(), (items, item_metas));
         }
         self.slot_cache.get(entry_id).unwrap()
     }
@@ -248,7 +255,7 @@ impl DataSource for RandomDataSource {
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile {
-        let items = self.generate_slot(entry_id);
+        let items = &self.generate_slot(entry_id).0;
 
         let mut slot_items = Vec::new();
         for row in items {
@@ -266,6 +273,28 @@ impl DataSource for RandomDataSource {
         }
 
         SlotTile {
+            tile_id,
+            items: slot_items,
+        }
+    }
+
+    fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotMetaTile {
+        let (items, item_metas) = &self.generate_slot(entry_id);
+
+        let mut slot_items = Vec::new();
+        for (row, row_meta) in items.iter().zip(item_metas.iter()) {
+            let mut slot_row = Vec::new();
+            for (item, item_meta) in row.iter().zip(row_meta.iter()) {
+                // When the item straddles a tile boundary, it has to be
+                // sliced to fit
+                if tile_id.0.overlaps(item.interval) {
+                    slot_row.push(item_meta.clone());
+                }
+            }
+            slot_items.push(slot_row);
+        }
+
+        SlotMetaTile {
             tile_id,
             items: slot_items,
         }

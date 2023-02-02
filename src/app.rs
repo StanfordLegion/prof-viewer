@@ -1,10 +1,13 @@
-use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
-use serde::{Deserialize, Serialize};
-#[cfg(not(target_arch = "wasm32"))]
+use std::collections::BTreeMap;
 use std::time::Instant;
 
-use crate::data::{DataSource, EntryID, EntryInfo, Field, SlotTile, UtilPoint};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::{
+    DataSource, EntryID, EntryInfo, Field, SlotMetaTile, SlotTile, TileID, UtilPoint,
+};
 use crate::timestamp::Interval;
+use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
+use serde::{Deserialize, Serialize};
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -50,6 +53,7 @@ struct Slot {
     expanded: bool,
     max_rows: u64,
     tiles: Vec<SlotTile>,
+    tile_metas: BTreeMap<TileID, SlotMetaTile>,
     last_view_interval: Option<Interval>,
 }
 
@@ -354,16 +358,26 @@ impl Slot {
         }
     }
 
+    fn fetch_meta(entry_id: &EntryID, tile_id: TileID, config: &mut Config) -> SlotMetaTile {
+        config.data_source.fetch_slot_meta_tile(entry_id, tile_id)
+    }
+
     fn render_tile(
-        tile: &SlotTile,
+        &mut self,
+        tile_index: usize,
         rows: u64,
         mut hover_pos: Option<Pos2>,
         ui: &mut egui::Ui,
         rect: Rect,
         viewport: Rect,
+        config: &mut Config,
         cx: &mut Context,
     ) -> Option<Pos2> {
-        if !cx.view_interval.overlaps(tile.tile_id.0) {
+        // Hack: can't pass this as an argument because it aliases self.
+        let tile = &self.tiles[tile_index];
+        let tile_id = tile.tile_id;
+
+        if !cx.view_interval.overlaps(tile_id.0) {
             return hover_pos;
         }
 
@@ -391,7 +405,7 @@ impl Slot {
             let row_hover = hover_pos.map_or(false, |h| row_rect.contains(h));
 
             // Now handle the items
-            for item in row_items {
+            for (item_idx, item) in row_items.iter().enumerate() {
                 if !cx.view_interval.overlaps(item.interval) {
                     continue;
                 }
@@ -408,9 +422,14 @@ impl Slot {
                 if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                     hover_pos = None;
 
+                    let tile_meta = self
+                        .tile_metas
+                        .entry(tile_id)
+                        .or_insert_with(|| Self::fetch_meta(&self.entry_id, tile_id, config));
+                    let item_meta = &tile_meta.items[row][item_idx];
                     ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
-                        ui.label(&item.title);
-                        for (name, field) in &item.fields {
+                        ui.label(&item_meta.title);
+                        for (name, field) in &item_meta.fields {
                             match field {
                                 Field::I64(value) => {
                                     ui.label(format!("{name}: {value}"));
@@ -453,6 +472,7 @@ impl Entry for Slot {
                 expanded: true,
                 max_rows: *max_rows,
                 tiles: Vec::new(),
+                tile_metas: BTreeMap::new(),
                 last_view_interval: None,
             }
         } else {
@@ -501,8 +521,9 @@ impl Entry for Slot {
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
             let rows = self.rows();
-            for tile in &self.tiles {
-                hover_pos = Self::render_tile(tile, rows, hover_pos, ui, rect, viewport, cx);
+            for tile_index in 0..self.tiles.len() {
+                hover_pos =
+                    self.render_tile(tile_index, rows, hover_pos, ui, rect, viewport, config, cx);
             }
         }
     }

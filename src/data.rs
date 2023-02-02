@@ -53,11 +53,15 @@ pub enum Field {
 pub struct Item {
     pub interval: Interval,
     pub color: Color32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ItemMeta {
     pub title: String,
     pub fields: Vec<(String, Field)>,
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct TileID(pub Interval);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -72,12 +76,19 @@ pub struct SlotTile {
     pub items: Vec<Vec<Item>>, // row -> [item]
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SlotMetaTile {
+    pub tile_id: TileID,
+    pub items: Vec<Vec<ItemMeta>>, // row -> [item]
+}
+
 pub trait DataSource {
     fn interval(&mut self) -> Interval;
     fn fetch_info(&mut self) -> &EntryInfo;
     fn request_tiles(&mut self, entry_id: &EntryID, request_interval: Interval) -> Vec<TileID>;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile;
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile;
+    fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotMetaTile;
 }
 
 impl EntryID {
