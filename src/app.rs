@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-#[cfg(not(target_arch = "wasm32"))]
+use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
+use serde::{Deserialize, Serialize};
+
 use crate::data::{
     DataSource, EntryID, EntryInfo, Field, SlotMetaTile, SlotTile, TileID, UtilPoint,
 };
 use crate::timestamp::Interval;
-use egui::{Align2, Color32, NumExt, Pos2, Rect, ScrollArea, Slider, Stroke, TextStyle, Vec2};
-use serde::{Deserialize, Serialize};
 
 /// Overview:
 ///   ProfApp -> Context, Window *
