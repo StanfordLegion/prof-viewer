@@ -18,12 +18,14 @@ fn main() {
     );
 }
 
+type SlotCacheTile = (Vec<Vec<Item>>, Vec<Vec<ItemMeta>>);
+
 #[derive(Default)]
 struct RandomDataSource {
     info: Option<EntryInfo>,
     interval: Option<Interval>,
     summary_cache: BTreeMap<EntryID, Vec<UtilPoint>>,
-    slot_cache: BTreeMap<EntryID, (Vec<Vec<Item>>, Vec<Vec<ItemMeta>>)>,
+    slot_cache: BTreeMap<EntryID, SlotCacheTile>,
     rng: rand::rngs::ThreadRng,
 }
 

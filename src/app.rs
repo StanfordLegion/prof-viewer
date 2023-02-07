@@ -368,6 +368,7 @@ impl Slot {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_tile(
         &mut self,
         tile_index: usize,
