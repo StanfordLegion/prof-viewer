@@ -348,6 +348,7 @@ impl Slot {
 
     fn clear(&mut self) {
         self.tiles.clear();
+        self.tile_metas.clear();
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &Context) {
@@ -359,8 +360,12 @@ impl Slot {
         }
     }
 
-    fn fetch_meta(entry_id: &EntryID, tile_id: TileID, config: &mut Config) -> SlotMetaTile {
-        config.data_source.fetch_slot_meta_tile(entry_id, tile_id)
+    fn fetch_meta_tile(&mut self, tile_id: TileID, config: &mut Config) -> &mut SlotMetaTile {
+        self.tile_metas.entry(tile_id).or_insert_with(|| {
+            config
+                .data_source
+                .fetch_slot_meta_tile(&self.entry_id, tile_id)
+        })
     }
 
     fn render_tile(
@@ -381,6 +386,9 @@ impl Slot {
         if !cx.view_interval.overlaps(tile_id.0) {
             return hover_pos;
         }
+
+        // Track which item, if any, we're interacting with
+        let mut interact_item = None;
 
         for (row, row_items) in tile.items.iter().enumerate() {
             // Need to reverse the rows because we're working in screen space
@@ -422,38 +430,39 @@ impl Slot {
                 let item_rect = Rect::from_min_max(min, max);
                 if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                     hover_pos = None;
-
-                    let tile_meta = self
-                        .tile_metas
-                        .entry(tile_id)
-                        .or_insert_with(|| Self::fetch_meta(&self.entry_id, tile_id, config));
-                    let item_meta = &tile_meta.items[row][item_idx];
-                    ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
-                        ui.label(&item_meta.title);
-                        for (name, field) in &item_meta.fields {
-                            match field {
-                                Field::I64(value) => {
-                                    ui.label(format!("{name}: {value}"));
-                                }
-                                Field::U64(value) => {
-                                    ui.label(format!("{name}: {value}"));
-                                }
-                                Field::String(value) => {
-                                    ui.label(format!("{name}: {value}"));
-                                }
-                                Field::Interval(value) => {
-                                    ui.label(format!("{name}: {value}"));
-                                }
-                                Field::Empty => {
-                                    ui.label(name);
-                                }
-                            }
-                        }
-                    });
+                    interact_item = Some((row, item_idx, item_rect, tile_id));
                 }
                 ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
             }
         }
+
+        if let Some((row, item_idx, item_rect, tile_id)) = interact_item {
+            let tile_meta = self.fetch_meta_tile(tile_id, config);
+            let item_meta = &tile_meta.items[row][item_idx];
+            ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
+                ui.label(&item_meta.title);
+                for (name, field) in &item_meta.fields {
+                    match field {
+                        Field::I64(value) => {
+                            ui.label(format!("{name}: {value}"));
+                        }
+                        Field::U64(value) => {
+                            ui.label(format!("{name}: {value}"));
+                        }
+                        Field::String(value) => {
+                            ui.label(format!("{name}: {value}"));
+                        }
+                        Field::Interval(value) => {
+                            ui.label(format!("{name}: {value}"));
+                        }
+                        Field::Empty => {
+                            ui.label(name);
+                        }
+                    }
+                }
+            });
+        }
+
         hover_pos
     }
 }
