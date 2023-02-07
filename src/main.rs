@@ -73,7 +73,7 @@ impl RandomDataSource {
         self.summary_cache.get(entry_id).unwrap()
     }
 
-    fn generate_slot(&mut self, entry_id: &EntryID) -> &(Vec<Vec<Item>>, Vec<Vec<ItemMeta>>) {
+    fn generate_slot(&mut self, entry_id: &EntryID) -> &SlotCacheTile {
         if !self.slot_cache.contains_key(entry_id) {
             let entry = self.fetch_info().get(entry_id);
 
