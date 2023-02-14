@@ -49,9 +49,13 @@ pub enum Field {
     Empty,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+pub struct ProfUID(pub u64);
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Item {
     pub interval: Interval,
+    pub prof_uid: ProfUID,
     pub color: Color32,
 }
 
