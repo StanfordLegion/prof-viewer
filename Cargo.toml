@@ -20,6 +20,8 @@ serde = { version = "1", features = ["derive"] }
 rand = { version = "0.8" }
 # transitive depedency, required for rand to support wasm
 getrandom = { version = "0.2", features = ["js"] }
+aho-corasick = "0.7.20"
+
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
