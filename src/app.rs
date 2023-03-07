@@ -104,6 +104,10 @@ struct Context {
     // data gets drawn. This gets used rendering the cursor, but we
     // only know it when we render slots. So stash it here.
     slot_rect: Option<Rect>,
+
+    toggle_dark_mode: bool,
+
+    debug: bool,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -826,8 +830,6 @@ impl ProfApp {
         // This is also where you can customized the look at feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
-
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         let mut result: Self = if let Some(storage) = cc.storage {
@@ -841,13 +843,19 @@ impl ProfApp {
         let window = result.windows.last().unwrap();
         result.cx.total_interval = window.config.interval;
         result.cx.view_interval = result.cx.total_interval;
-
         result.extra_source = extra_source;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
             result.last_update = Some(Instant::now());
         }
+
+        let theme = if result.cx.toggle_dark_mode {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
+        cc.egui_ctx.set_visuals(theme);
 
         result
     }
@@ -1049,6 +1057,41 @@ impl eframe::App for ProfApp {
                         "https://github.com/emilk/egui/tree/master/crates/eframe",
                     );
                     ui.label(".");
+                });
+
+                ui.horizontal(|ui| {
+                    // swap to dark mode
+                    let mut current_theme = if cx.toggle_dark_mode {
+                        egui::Visuals::dark()
+                    } else {
+                        egui::Visuals::light()
+                    };
+
+                    current_theme.light_dark_radio_buttons(ui);
+                    if current_theme.dark_mode != cx.toggle_dark_mode {
+                        cx.toggle_dark_mode = current_theme.dark_mode;
+                        ctx.set_visuals(current_theme);
+                    }
+
+                    let debug_color = if cx.debug {
+                        ui.visuals().hyperlink_color
+                    } else {
+                        ui.visuals().text_color()
+                    };
+
+                    let button =
+                        egui::Button::new(egui::RichText::new("🛠").color(debug_color).size(16.0))
+                            .frame(false);
+                    if ui
+                        .add(button)
+                        .on_hover_text(format!(
+                            "Toggle debug mode {}",
+                            if cx.debug { "off" } else { "on" }
+                        ))
+                        .clicked()
+                    {
+                        cx.debug = !cx.debug;
+                    }
                 });
 
                 egui::warn_if_debug_build(ui);
