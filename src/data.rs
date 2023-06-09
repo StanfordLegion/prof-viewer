@@ -72,6 +72,11 @@ pub struct ItemMeta {
     pub fields: Vec<(String, Field)>,
 }
 
+impl PartialEq for ItemMeta {
+    fn eq(&self, other: &Self) -> bool {
+        self.item_uid == other.item_uid
+    }
+}
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct TileID(pub Interval);
 

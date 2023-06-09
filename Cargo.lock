@@ -1752,6 +1752,7 @@ version = "0.1.0"
 dependencies = [
  "actix-cors",
  "actix-web",
+ "aho-corasick",
  "eframe",
  "egui",
  "env_logger",

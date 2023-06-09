@@ -14,6 +14,7 @@ use crate::data::{
     SummaryTileData, TileID, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
+use crate::search::{SelectedItem, SelectedState};
 use crate::timestamp::{Interval, Timestamp, TimestampParseError};
 
 /// Overview:
@@ -45,6 +46,11 @@ use crate::timestamp::{Interval, Timestamp, TimestampParseError};
 /// Slot:
 ///   * One Slot for each processor, channel, memory
 ///   * Viewer widget for items
+
+
+const MAX_SELECTED_ITEMS: u64 = 1000;
+const MAX_SEARCHED_ITEMS: u64 = 100000;
+
 
 struct Summary {
     entry_id: EntryID,
@@ -91,6 +97,28 @@ struct Window {
     index: u64,
     kinds: Vec<String>,
     config: Config,
+}
+
+fn fetch_meta_tile(
+    config: &mut Config,
+    tile_meta_cache: &mut BTreeMap<(EntryID, TileID), Option<SlotMetaTile>>,
+    entry_id: &EntryID,
+    tile_id: &TileID,
+) -> Option<SlotMetaTile> {
+    if let std::collections::btree_map::Entry::Vacant(e) =
+        tile_meta_cache.entry((entry_id.clone(), *tile_id))
+    {
+        config
+            .data_source
+            .fetch_slot_meta_tile(entry_id.clone(), *tile_id);
+        e.insert(None);
+        None
+    } else {
+        tile_meta_cache
+            .get(&(entry_id.clone(), *tile_id))
+            .unwrap()
+            .clone()
+    }
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -167,6 +195,8 @@ struct Context {
 
     debug: bool,
 
+    selected_state: SelectedState,
+
     zoom_state: ZoomState,
     #[serde(skip)]
     interval_state: IntervalSelectState,
@@ -217,15 +247,17 @@ trait Entry {
             *style.noninteractive()
         };
 
-        ui.painter()
-            .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
-        ui.painter().text(
-            rect.min + style.spacing.item_spacing,
-            Align2::LEFT_TOP,
-            self.label_text(),
-            font_id,
-            visuals.text_color(),
-        );
+         // prevent text overflow
+         ui.painter()
+         .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
+     let lay = ui.painter().layout(
+         self.label_text().to_string(),
+         font_id,
+         visuals.text_color(),
+         rect.width() - style.spacing.item_spacing.x * 2.0,
+     );
+     ui.painter()
+         .galley(rect.min + style.spacing.item_spacing, lay);
 
         if response.clicked() {
             // This will take effect next frame because we can't redraw this widget now
@@ -465,6 +497,7 @@ impl Slot {
         tile_index: usize,
         rows: u64,
         mut hover_pos: Option<Pos2>,
+        clicked: bool,
         ui: &mut egui::Ui,
         rect: Rect,
         viewport: Rect,
@@ -481,7 +514,7 @@ impl Slot {
         }
         let tile = tile.as_ref().unwrap();
 
-        if !cx.view_interval.overlaps(tile_id.0) {
+        if !cx.view_interval.overlaps(tile_id.0) && cx.selected_state.selected.is_none() {
             return hover_pos;
         }
 
@@ -501,9 +534,11 @@ impl Slot {
 
             // Cull if out of bounds
             // Note: need to shift by rect.min to get to viewport space
-            if row_max.y - rect.min.y < viewport.min.y {
+            if row_max.y - rect.min.y < viewport.min.y && cx.selected_state.selected.is_none() {
                 break;
-            } else if row_min.y - rect.min.y > viewport.max.y {
+            } else if row_min.y - rect.min.y > viewport.max.y
+                && cx.selected_state.selected.is_none()
+            {
                 continue;
             }
 
@@ -526,11 +561,99 @@ impl Slot {
                 let max = rect.lerp_inside(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
 
                 let item_rect = Rect::from_min_max(min, max);
+
+                if cx.selected_state.selected.is_some()
+                    && cx.selected_state.selected.as_ref().unwrap().item_uid == item.item_uid
+                {
+                    ui.scroll_to_rect(item_rect, Some(egui::Align::Center));
+                    // set interval
+                    ProfApp::zoom(cx, item.interval);
+                    cx.selected_state.selected = None;
+                }
+
                 if row_hover && hover_pos.map_or(false, |h| item_rect.contains(h)) {
                     hover_pos = None;
                     interact_item = Some((row, item_idx, item_rect, tile_id));
+
+                    let index = if cx
+                        .selected_state
+                        .highlighted_items
+                        .contains_key(&self.entry_id)
+                    {
+                        cx.selected_state.highlighted_items[&self.entry_id]
+                            .iter()
+                            .position(|r| r.item_uid == item.item_uid)
+                    } else {
+                        None
+                    };
+                    if let Some(index) = index {
+                        if clicked {
+                            ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
+                            cx.selected_state
+                                .highlighted_items
+                                .get_mut(&self.entry_id)
+                                .unwrap()
+                                .remove(index);
+                        } else {
+                            ui.painter().rect(
+                                item_rect,
+                                0.0,
+                                item.color,
+                                Stroke::new(2.0, Color32::WHITE),
+                            );
+                        }
+                    } else if clicked {
+                        // retire
+
+                        let meta = if let Some(m) = fetch_meta_tile(
+                            config,
+                            &mut self.tile_metas,
+                            &self.entry_id.clone(),
+                            &tile_id,
+                        ) {
+                            Some(m.items[row][item_idx].clone())
+                        } else {
+                            None
+                        };
+                        let selected_item = SelectedItem {
+                            entry_id: self.entry_id.clone(),
+                            tile_id,
+                            meta,
+                            row,
+                            item_uid: item.item_uid,
+                            index: item_idx,
+                        };
+                        cx.selected_state.add_highlighted_item(selected_item);
+                        ui.painter().rect(
+                            item_rect,
+                            0.0,
+                            item.color,
+                            Stroke::new(2.0, Color32::WHITE),
+                        );
+                    } else {
+                        ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
+                    }
+                } else if cx
+                    .selected_state
+                    .highlighted_items
+                    .contains_key(&self.entry_id)
+                {
+                    let index = cx.selected_state.highlighted_items[&self.entry_id]
+                        .iter()
+                        .position(|r| r.item_uid == item.item_uid);
+                    if index.is_some() {
+                        ui.painter().rect(
+                            item_rect,
+                            0.0,
+                            item.color,
+                            Stroke::new(2.0, Color32::WHITE),
+                        );
+                    } else {
+                        ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
+                    }
+                } else {
+                    ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
                 }
-                ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
             }
         }
 
@@ -624,8 +747,21 @@ impl Entry for Slot {
         cx.slot_rect = Some(rect); // Save slot rect for use later
 
         let response = ui.allocate_rect(rect, egui::Sense::hover());
+
+        let mut clicked = false;
+
+        ui.input(|i| {
+            let pointer = &i.pointer;
+            clicked = pointer.any_click() && rect.contains(pointer.interact_pos().unwrap());
+        });
+
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
+        if cx.selected_state.selected.is_some()
+            && cx.selected_state.selected.clone().unwrap().entry_id == self.entry_id
+        {
+            self.expanded = true
+        }
         if self.expanded {
             if self
                 .last_view_interval
@@ -646,7 +782,7 @@ impl Entry for Slot {
             let rows = self.rows();
             for tile_index in 0..self.tile_ids.len() {
                 hover_pos =
-                    self.render_tile(tile_index, rows, hover_pos, ui, rect, viewport, config, cx);
+                    self.render_tile(tile_index, rows, hover_pos, clicked, ui, rect, viewport, config, cx);
             }
         }
     }
@@ -686,9 +822,9 @@ impl<S: Entry> Panel<S> {
 
         // Cull if out of bounds
         // Note: need to shift by rect.min to get to viewport space
-        if max_y - rect.min.y < viewport.min.y {
+        if max_y - rect.min.y < viewport.min.y && cx.selected_state.selected.is_none() {
             return false;
-        } else if min_y - rect.min.y > viewport.max.y {
+        } else if min_y - rect.min.y > viewport.max.y && cx.selected_state.selected.is_none() {
             return true;
         }
 
@@ -791,6 +927,11 @@ impl<S: Entry> Entry for Panel<S> {
             Self::render(ui, rect, viewport, summary, &mut y, config, cx);
         }
 
+        if cx.selected_state.selected.is_some()
+            && cx.selected_state.selected.clone().unwrap().entry_id == self.entry_id
+        {
+            self.expanded = true
+        }
         if self.expanded {
             for slot in &mut self.slots {
                 // Apply visibility settings
@@ -1122,7 +1263,7 @@ impl ProfApp {
             NoAction,
         }
         let action = ctx.input(|i| {
-            if i.modifiers.ctrl {
+            // if i.modifiers.ctrl {
                 if i.key_pressed(egui::Key::ArrowLeft) {
                     Actions::UndoZoom
                 } else if i.key_pressed(egui::Key::ArrowRight) {
@@ -1132,9 +1273,9 @@ impl ProfApp {
                 } else {
                     Actions::NoAction
                 }
-            } else {
-                Actions::NoAction
-            }
+            // } else {
+            //     Actions::NoAction
+            // }
         });
         match action {
             Actions::UndoZoom => ProfApp::undo_zoom(cx),
@@ -1371,6 +1512,236 @@ impl eframe::App for ProfApp {
                 ui.set_width(ui.available_width());
                 ui.heading("Task Details");
                 ui.label("Click on a task to see it displayed here.");
+
+                ui.set_width(ui.available_width());
+                ui.heading("Task Details");
+                ui.label("Click on a task to see it displayed here.");
+
+                let text_style = TextStyle::Body;
+                let row_height = ui.text_style_height(&text_style);
+
+                ui.separator();
+
+                ui.subheading("Search: ", cx);
+
+                let reply = ui.with_layout(egui::Layout::right_to_left(egui::Align::LEFT), |ui| {
+                    if ui.button("✖").clicked() {
+                        cx.selected_state.clear_search()
+                    }
+                    ui.text_edit_singleline(&mut cx.selected_state.search)
+                });
+
+                if reply.inner.changed() || cx.zoom_state.zoom_count < 2 {
+                    // HACK: reset selected nodes twice per zoom. No clue why this is necessary.
+                    if cx.zoom_state.zoom_count < 2 {
+                        cx.zoom_state.zoom_count += 1;
+                    }
+                    let mut searched = 0;
+                    cx.selected_state.clear_highlighted_items();
+
+                    if !cx.selected_state.search.is_empty() {
+                        // traverse panel tree
+                        'outer: for window in windows.iter_mut() {
+                            let Window {
+                                config,
+                                tile_meta_cache,
+                                ..
+                            } = window;
+                            for node in window.panel.slots.iter_mut() {
+                                for channel in node.slots.iter_mut() {
+                                    for slot in channel.slots.iter_mut() {
+                                        if slot.tiles.is_empty() {
+                                            slot.inflate(config, cx)
+                                        };
+
+                                        for tile in slot.tiles.iter_mut() {
+                                            let meta = fetch_meta_tile(
+                                                config,
+                                                tile_meta_cache,
+                                                &slot.entry_id,
+                                                &tile.tile_id,
+                                            );
+                                            if let Some(meta) = meta {
+                                                for (row, i) in meta.items.iter().enumerate() {
+                                                    for (idx, j) in i.iter().enumerate() {
+                                                        if cx.selected_state.search(&j.title) {
+                                                            let selected_item = SelectedItem {
+                                                                entry_id: slot.entry_id.clone(),
+                                                                tile_id: tile.tile_id,
+                                                                item_uid: j.item_uid,
+                                                                row,
+                                                                index: idx,
+                                                                meta: Some(j.clone()),
+                                                            };
+
+                                                            cx.selected_state.add_highlighted_item(
+                                                                selected_item,
+                                                            );
+                                                            cx.selected_state.num_matches += 1;
+                                                        }
+                                                        searched += 1;
+                                                        if searched >= MAX_SEARCHED_ITEMS {
+                                                            break 'outer;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if !cx.selected_state.search.is_empty() {
+                    let exceeded_max = cx.selected_state.num_matches >= MAX_SELECTED_ITEMS;
+                    let asterisk = if exceeded_max { "*" } else { "" };
+                    let es = if cx.selected_state.num_matches == 1 {
+                        ""
+                    } else {
+                        "es"
+                    };
+                    ui.label(format!(
+                        "Found {matches} match{es}{asterisk}",
+                        matches = cx.selected_state.num_matches
+                    ));
+                    if exceeded_max {
+                        ui.label(format!(
+                            "* Only displaying the first {MAX_SELECTED_ITEMS} matches",
+                        ));
+                    }
+                }
+
+                ui.separator();
+
+                ScrollArea::vertical()
+                    .max_height(ui.available_height() - 60.0)
+                    .auto_shrink([false; 2])
+                    .show_rows(
+                        ui,
+                        row_height,
+                        cx.selected_state.highlighted_items.len(),
+                        |ui, _row_range| {
+                            let mut count = 0;
+                            for window in windows.iter_mut() {
+                                let top_level = get_entries_with_level(
+                                    &cx.selected_state.highlighted_items.keys().collect(),
+                                    0,
+                                );
+                                for (i, nodes) in window.panel.slots.iter_mut().enumerate() {
+                                    // grab top_level entries of i entry_id
+
+                                    let top_entry = EntryID::root().child(i as u64);
+
+                                    if !cx.selected_state.entries_highlighted.contains(&top_entry) {
+                                        continue;
+                                    }
+                                    let top_level_filter = get_filtered_entries(&top_level, 0, i);
+                                    let middle_level = get_entries_with_level(&top_level_filter, 1);
+                                    if middle_level.is_empty() || middle_level[0].is_empty() {
+                                        continue;
+                                    }
+                                    ui.collapsing(nodes.long_name.to_string(), |ui| {
+                                        for (j, channels) in nodes.slots.iter_mut().enumerate() {
+                                            let middle_entry = top_entry.child(j as u64);
+                                            if !cx
+                                                .selected_state
+                                                .entries_highlighted
+                                                .contains(&middle_entry)
+                                            {
+                                                continue;
+                                            }
+                                            let middle_level_filter =
+                                                get_filtered_entries(&middle_level, 1, j);
+                                            let bottom_level =
+                                                get_entries_with_level(&middle_level_filter, 2);
+
+                                            if bottom_level.is_empty() || bottom_level[0].is_empty()
+                                            {
+                                                continue;
+                                            }
+                                            ui.collapsing(channels.long_name.to_string(), |ui| {
+                                                for (k, slot) in
+                                                    channels.slots.iter_mut().enumerate()
+                                                {
+                                                    let bottom_entry = middle_entry.child(k as u64);
+                                                    if !cx
+                                                        .selected_state
+                                                        .entries_highlighted
+                                                        .contains(&bottom_entry)
+                                                    {
+                                                        continue;
+                                                    }
+                                                    let bottom_level_filter =
+                                                        get_filtered_entries(&bottom_level, 2, k);
+
+                                                    if bottom_level_filter.is_empty()
+                                                        || bottom_level[0].is_empty()
+                                                    {
+                                                        continue;
+                                                    }
+                                                    ui.collapsing(
+                                                        slot.long_name.to_string(),
+                                                        |ui| {
+                                                            'outer: for key in bottom_level_filter {
+                                                                for item in cx
+                                                                    .selected_state
+                                                                    .highlighted_items[key]
+                                                                    .iter()
+                                                                {
+                                                                    if count > MAX_SELECTED_ITEMS {
+                                                                        break 'outer;
+                                                                    }
+                                                                    let item_str =
+                                                                        if let Some(meta) =
+                                                                            &item.meta
+                                                                        {
+                                                                            meta.title.clone()
+                                                                        } else {
+                                                                            "Fetching item..."
+                                                                                .to_string()
+                                                                        };
+                                                                    if ui
+                                                                        .small_button(
+                                                                            RichText::new(
+                                                                                item_str,
+                                                                            )
+                                                                            .color(
+                                                                                Color32::from_rgb(
+                                                                                    128, 140, 255,
+                                                                                ),
+                                                                            ),
+                                                                        )
+                                                                        .clicked()
+                                                                    {
+                                                                        egui::Window::new(
+                                                                            "My Window",
+                                                                        )
+                                                                        .show(ctx, |ui| {
+                                                                            ui.label(
+                                                                                "Hello World!",
+                                                                            );
+                                                                        });
+                                                                        cx.selected_state
+                                                                            .selected =
+                                                                            Some(item.clone());
+                                                                        nodes.expanded = true;
+                                                                        channels.expanded = true;
+                                                                        slot.expanded = true;
+                                                                        count += 1;
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        },
+                    );
             });
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -1545,6 +1916,36 @@ impl UiExtra for egui::Ui {
                 ui.add(egui::Label::new(text));
             },
         );
+    }
+}
+
+fn get_entries_with_level<'a>(items: &Vec<&'a EntryID>, level: u64) -> Vec<Vec<&'a EntryID>> {
+    let mut split: Vec<Vec<&EntryID>> = vec![vec![]];
+    for entry in items {
+        let sublist = split.last_mut().unwrap();
+        match sublist.last_mut() {
+            Some(x) if entry.slot_index(level).unwrap() != x.slot_index(level).unwrap() => {
+                split.push(vec![entry]);
+            }
+            _ => sublist.push(entry),
+        }
+    }
+    split
+}
+
+fn get_filtered_entries<'a>(
+    level_entries: &[Vec<&'a EntryID>],
+    slot_index: u64,
+    i: usize,
+) -> Vec<&'a EntryID> {
+    let index = level_entries
+        .iter()
+        .position(|x| !x.is_empty() && x[0].slot_index(slot_index).unwrap() == i as u64);
+
+    if let Some(index) = index {
+        level_entries[index].clone()
+    } else {
+        Vec::new()
     }
 }
 

@@ -27,6 +27,8 @@ rand = { version = "0.8" }
 # transitive depedency, required for rand to support wasm
 getrandom = { version = "0.2", features = ["js"] }
 
+aho-corasick = "0.7.20"
+
 
 # client
 url = { version = "2", optional = true }

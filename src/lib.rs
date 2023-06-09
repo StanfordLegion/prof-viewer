@@ -8,4 +8,5 @@ pub mod http;
 pub mod logging;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod parallel_data;
+pub mod search;
 pub mod timestamp;
