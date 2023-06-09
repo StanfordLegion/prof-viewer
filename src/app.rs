@@ -95,28 +95,6 @@ struct Window {
     config: Config,
 }
 
-fn fetch_meta_tile(
-    config: &mut Config,
-    tile_meta_cache: &mut BTreeMap<(EntryID, TileID), Option<SlotMetaTile>>,
-    entry_id: &EntryID,
-    tile_id: &TileID,
-) -> Option<SlotMetaTile> {
-    if let std::collections::btree_map::Entry::Vacant(e) =
-        tile_meta_cache.entry((entry_id.clone(), *tile_id))
-    {
-        config
-            .data_source
-            .fetch_slot_meta_tile(entry_id.clone(), *tile_id);
-        e.insert(None);
-        None
-    } else {
-        tile_meta_cache
-            .get(&(entry_id.clone(), *tile_id))
-            .unwrap()
-            .clone()
-    }
-}
-
 #[derive(Default, Deserialize, Serialize)]
 struct ZoomState {
     levels: Vec<Interval>,
@@ -601,16 +579,15 @@ impl Slot {
                     } else if clicked {
                         // retire
 
-                        let meta = if let Some(m) = fetch_meta_tile(
-                            config,
-                            &mut self.tile_metas,
-                            &self.entry_id.clone(),
-                            &tile_id,
+                        // FIXME (Elliott): issue with mutability here, can't fetch the meta tile
+                        let meta = None; /*if let Some(m) = self.fetch_meta_tile(
+                            tile_id,
+                            config
                         ) {
                             Some(m.items[row][item_idx].clone())
                         } else {
                             None
-                        };
+                        };*/
                         let selected_item = SelectedItem {
                             entry_id: self.entry_id.clone(),
                             tile_id,
@@ -1540,7 +1517,6 @@ impl eframe::App for ProfApp {
                         'outer: for window in windows.iter_mut() {
                             let Window {
                                 config,
-                                tile_meta_cache,
                                 ..
                             } = window;
                             for node in window.panel.slots.iter_mut() {
@@ -1550,20 +1526,21 @@ impl eframe::App for ProfApp {
                                             slot.inflate(config, cx)
                                         };
 
-                                        for tile in slot.tiles.iter_mut() {
-                                            let meta = fetch_meta_tile(
-                                                config,
-                                                tile_meta_cache,
-                                                &slot.entry_id,
-                                                &tile.tile_id,
+                                        let entry_id = slot.entry_id.clone();
+
+                                        for tile_index in 0..slot.tile_ids.len() {
+                                            let tile_id = slot.tile_ids[tile_index];
+                                            let meta = slot.fetch_meta_tile(
+                                                tile_id,
+                                                config
                                             );
                                             if let Some(meta) = meta {
                                                 for (row, i) in meta.items.iter().enumerate() {
                                                     for (idx, j) in i.iter().enumerate() {
                                                         if cx.selected_state.search(&j.title) {
                                                             let selected_item = SelectedItem {
-                                                                entry_id: slot.entry_id.clone(),
-                                                                tile_id: tile.tile_id,
+                                                                entry_id: entry_id.clone(),
+                                                                tile_id,
                                                                 item_uid: j.item_uid,
                                                                 row,
                                                                 index: idx,
