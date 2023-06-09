@@ -4,9 +4,7 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use egui::{
-    Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
-};
+use egui::{Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
