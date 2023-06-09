@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use actix_cors::Cors;
 use actix_web::{
@@ -11,7 +11,7 @@ use crate::data::DataSource;
 use crate::http::schema::TileRequest;
 
 pub struct AppState {
-    pub data_source: Mutex<Box<dyn DataSource + Send + Sync + 'static>>,
+    pub data_source: Box<dyn DataSource + Send + Sync + 'static>,
 }
 
 pub struct DataSourceHTTPServer {
@@ -29,21 +29,17 @@ impl DataSourceHTTPServer {
         Self {
             host,
             port,
-            state: AppState {
-                data_source: Mutex::new(data_source),
-            },
+            state: AppState { data_source },
         }
     }
 
     async fn fetch_info(state: web::Data<AppState>) -> Result<impl Responder> {
-        let mut data_source = state.data_source.lock().unwrap();
-        let result = data_source.fetch_info();
+        let result = state.data_source.fetch_info();
         Ok(web::Json(result))
     }
 
     async fn fetch_tile_set(state: web::Data<AppState>) -> Result<impl Responder> {
-        let mut data_source = state.data_source.lock().unwrap();
-        let result = data_source.fetch_tile_set();
+        let result = state.data_source.fetch_tile_set();
         Ok(web::Json(result))
     }
 
@@ -51,8 +47,9 @@ impl DataSourceHTTPServer {
         req: web::Json<TileRequest>,
         state: web::Data<AppState>,
     ) -> Result<impl Responder> {
-        let mut data_source = state.data_source.lock().unwrap();
-        let result = data_source.fetch_summary_tile(&req.entry_id, req.tile_id);
+        let result = state
+            .data_source
+            .fetch_summary_tile(&req.entry_id, req.tile_id);
         Ok(web::Json(result))
     }
 
@@ -60,8 +57,9 @@ impl DataSourceHTTPServer {
         req: web::Json<TileRequest>,
         state: web::Data<AppState>,
     ) -> Result<impl Responder> {
-        let mut data_source = state.data_source.lock().unwrap();
-        let result = data_source.fetch_slot_tile(&req.entry_id, req.tile_id);
+        let result = state
+            .data_source
+            .fetch_slot_tile(&req.entry_id, req.tile_id);
         Ok(web::Json(result))
     }
 
@@ -69,8 +67,9 @@ impl DataSourceHTTPServer {
         req: web::Json<TileRequest>,
         state: web::Data<AppState>,
     ) -> Result<impl Responder> {
-        let mut data_source = state.data_source.lock().unwrap();
-        let result = data_source.fetch_slot_meta_tile(&req.entry_id, req.tile_id);
+        let result = state
+            .data_source
+            .fetch_slot_meta_tile(&req.entry_id, req.tile_id);
         Ok(web::Json(result))
     }
 

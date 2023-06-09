@@ -1,5 +1,5 @@
 use crate::data::{
-    DataSource, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
+    DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
 };
 
 pub trait DeferredDataSource {
@@ -16,7 +16,7 @@ pub trait DeferredDataSource {
 }
 
 pub struct DeferredDataSourceWrapper {
-    data_source: Box<dyn DataSource>,
+    data_source: Box<dyn DataSourceMut>,
     infos: Vec<DataSourceInfo>,
     tile_sets: Vec<TileSet>,
     summary_tiles: Vec<SummaryTile>,
@@ -25,7 +25,7 @@ pub struct DeferredDataSourceWrapper {
 }
 
 impl DeferredDataSourceWrapper {
-    pub fn new(data_source: Box<dyn DataSource>) -> Self {
+    pub fn new(data_source: Box<dyn DataSourceMut>) -> Self {
         Self {
             data_source,
             infos: Vec::new(),

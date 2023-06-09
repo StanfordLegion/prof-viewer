@@ -117,11 +117,37 @@ pub struct SlotMetaTile {
 }
 
 pub trait DataSource {
+    fn fetch_info(&self) -> DataSourceInfo;
+    fn fetch_tile_set(&self) -> TileSet;
+    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile;
+    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID) -> SlotTile;
+    fn fetch_slot_meta_tile(&self, entry_id: &EntryID, tile_id: TileID) -> SlotMetaTile;
+}
+
+pub trait DataSourceMut {
     fn fetch_info(&mut self) -> DataSourceInfo;
     fn fetch_tile_set(&mut self) -> TileSet;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile;
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile;
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotMetaTile;
+}
+
+impl<T: DataSource> DataSourceMut for T {
+    fn fetch_info(&mut self) -> DataSourceInfo {
+        DataSource::fetch_info(self)
+    }
+    fn fetch_tile_set(&mut self) -> TileSet {
+        DataSource::fetch_tile_set(self)
+    }
+    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile {
+        DataSource::fetch_summary_tile(self, entry_id, tile_id)
+    }
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotTile {
+        DataSource::fetch_slot_tile(self, entry_id, tile_id)
+    }
+    fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SlotMetaTile {
+        DataSource::fetch_slot_meta_tile(self, entry_id, tile_id)
+    }
 }
 
 impl EntryID {
