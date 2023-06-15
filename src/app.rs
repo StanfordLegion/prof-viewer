@@ -97,6 +97,7 @@ struct Window {
 struct ZoomState {
     levels: Vec<Interval>,
     index: usize,
+    zoom_count: u32, // factor out
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
@@ -1081,6 +1082,7 @@ impl ProfApp {
         cx.zoom_state.levels.truncate(cx.zoom_state.index + 1);
         cx.zoom_state.levels.push(cx.view_interval);
         cx.zoom_state.index = cx.zoom_state.levels.len() - 1;
+        cx.zoom_state.zoom_count = 0;
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
     }
@@ -1091,6 +1093,7 @@ impl ProfApp {
         }
         cx.zoom_state.index -= 1;
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
+        cx.zoom_state.zoom_count = 0;
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
     }
@@ -1101,6 +1104,7 @@ impl ProfApp {
         }
         cx.zoom_state.index += 1;
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
+        cx.zoom_state.zoom_count = 0;
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
     }
