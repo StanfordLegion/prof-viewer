@@ -10,8 +10,8 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
-    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, SlotMetaTileData, SlotTileData,
-    SummaryTileData, TileID, UtilPoint,
+    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemMeta, ItemUID, SlotMetaTileData,
+    SlotTileData, SummaryTileData, TileID, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 use crate::timestamp::{Interval, Timestamp, TimestampParseError};
@@ -75,6 +75,11 @@ struct Panel<S: Entry> {
     slots: Vec<S>,
 }
 
+#[derive(Default)]
+struct SearchState {
+    cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, ItemMeta>>>,
+}
+
 struct Config {
     // Node selection controls
     min_node: u64,
@@ -84,6 +89,8 @@ struct Config {
     interval: Interval,
 
     data_source: CountingDeferredDataSource<Box<dyn DeferredDataSource>>,
+
+    search_state: SearchState,
 }
 
 struct Window {
@@ -855,6 +862,7 @@ impl Config {
             max_node,
             interval,
             data_source: CountingDeferredDataSource::new(data_source),
+            search_state: SearchState::default(),
         }
     }
 
@@ -1029,6 +1037,14 @@ impl Window {
         if ui.button("Reset Zoom Level").clicked() {
             ProfApp::zoom(cx, cx.total_interval);
         }
+    }
+
+    fn search(&mut self, query: &str, cx: &mut Context) {
+        // 1. Expand all meta tiles. Including collapsed entries.
+        // 2. Search whatever data we have. Results are cached by entry/tile.
+        // 3. Done? Modify draw code to highlight cached items.
+        // 4. Cache invalidation. Maybe on zoom?
+        // 5. Code to render search results (hint: use cache).
     }
 }
 
