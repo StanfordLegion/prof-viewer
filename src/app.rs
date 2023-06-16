@@ -656,10 +656,7 @@ impl Entry for Slot {
     }
 
     fn search(&mut self, config: &mut Config, cx: &mut Context) {
-        if config.search_state.start_entry(self) {
-            return;
-        }
-
+        config.search_state.start_entry(self);
         for (tile_id, tile) in &self.tile_metas {
             if config.search_state.start_tile(self, *tile_id) {
                 return;
@@ -958,26 +955,20 @@ impl SearchState {
         item.title.find(&self.query).is_some()
     }
 
-    fn start_entry<E>(&mut self, entry: &E) -> bool
-    where
-        E: Entry,
-    {
-        // Don't search if it already exists.
-        if self.result_cache.contains_key(entry.entry_id()) {
-            return false;
+    fn start_entry<E: Entry>(&mut self, entry: &E) {
+        // Double lookup is better than cloning unconditionally.
+        if !self.result_cache.contains_key(entry.entry_id()) {
+            self.result_cache
+                .entry(entry.entry_id().clone())
+                .or_insert_with(BTreeMap::new);
         }
 
-        // Double lookup is better than cloning unconditionally.
-        self.result_cache
-            .entry(entry.entry_id().clone())
-            .or_insert_with(BTreeMap::new);
-        true
+        // No result here because we need to recurse into the tiles
+        // regardless. Tiles can arrive asynchronously, and we don't want to
+        // manage a cache-invalidation scheme for tile inflation.
     }
 
-    fn start_tile<E>(&mut self, entry: &E, tile_id: TileID) -> bool
-    where
-        E: Entry,
-    {
+    fn start_tile<E: Entry>(&mut self, entry: &E, tile_id: TileID) -> bool {
         let mut result = true;
         // Always called second, so we know the entry exists.
         self.result_cache
