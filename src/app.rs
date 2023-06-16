@@ -80,9 +80,6 @@ struct SearchCacheItem {
     // For horizontal scroll, we need the item's interval
     interval: Interval,
 
-    // For vertical scroll, we need the item's entry
-    entry_id: EntryID,
-
     // Cache fields for display
     title: String,
 }
@@ -99,7 +96,7 @@ struct SearchState {
     // Cache of matching items
     result_set: BTreeSet<ItemUID>,
     result_cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, SearchCacheItem>>>,
-    entry_tree: BTreeMap<u64, (u64, BTreeMap<u64, (u64, BTreeMap<u64, u64>)>)>,
+    entry_tree: BTreeMap<u64, BTreeMap<u64, BTreeSet<u64>>>,
 }
 
 struct Config {
@@ -1058,7 +1055,6 @@ impl SearchState {
                 .entry(item.item_uid)
                 .or_insert_with(|| SearchCacheItem {
                     interval: item.original_interval,
-                    entry_id: entry.entry_id().clone(),
                     title: item.title.clone(),
                 });
         }
@@ -1075,25 +1071,14 @@ impl SearchState {
             let level1_index = entry_id.slot_index(1).unwrap();
             let level2_index = entry_id.slot_index(2).unwrap();
 
-            let (level0_count, level0_subtree) = self
+            let level0_subtree = self
                 .entry_tree
                 .entry(level0_index)
-                .or_insert_with(|| (0, BTreeMap::new()));
-            let (level1_count, level1_subtree) = level0_subtree
+                .or_insert_with(BTreeMap::new);
+            let level1_subtree = level0_subtree
                 .entry(level1_index)
-                .or_insert_with(|| (0, BTreeMap::new()));
-            let level2_count = level1_subtree.entry(level2_index).or_insert(0);
-
-            // At each level, we add one to account for the collapsible header.
-            if *level2_count != cache_size {
-                *level2_count = cache_size + 1;
-
-                // Bubble results up to the root of the tree.
-                *level1_count = level1_subtree.values().sum();
-                *level1_count += 1;
-                *level0_count = level0_subtree.values().map(|(x, _)| x).sum();
-                *level0_count += 1;
-            }
+                .or_insert_with(BTreeSet::new);
+            level1_subtree.insert(level2_index);
         }
     }
 }
@@ -1362,21 +1347,32 @@ impl Window {
             .auto_shrink([false; 2])
             .show(ui, |ui| {
                 let root_tree = &self.config.search_state.entry_tree;
-                for (level0_index, (_, level0_subtree)) in root_tree {
+                for (level0_index, level0_subtree) in root_tree {
                     let level0_slot = &mut self.panel.slots[*level0_index as usize];
                     ui.collapsing(&level0_slot.long_name, |ui| {
-                        for (level1_index, (_, level1_subtree)) in level0_subtree {
+                        for (level1_index, level1_subtree) in level0_subtree {
                             let level1_slot = &mut level0_slot.slots[*level1_index as usize];
                             ui.collapsing(&level1_slot.long_name, |ui| {
-                                for level2_index in level1_subtree.keys() {
-                                    let level2_slot = &mut level1_slot.slots[*level2_index as usize];
+                                for level2_index in level1_subtree {
+                                    let level2_slot =
+                                        &mut level1_slot.slots[*level2_index as usize];
                                     ui.collapsing(&level2_slot.long_name, |ui| {
-                                        let cache = self.config.search_state.result_cache.get(&level2_slot.entry_id).unwrap();
+                                        let cache = self
+                                            .config
+                                            .search_state
+                                            .result_cache
+                                            .get(&level2_slot.entry_id)
+                                            .unwrap();
                                         for tile_cache in cache.values() {
                                             for item in tile_cache.values() {
-                                                let button = egui::widgets::Button::new(&item.title).small().wrap(false);
+                                                let button =
+                                                    egui::widgets::Button::new(&item.title)
+                                                        .small()
+                                                        .wrap(false);
                                                 if ui.add(button).clicked() {
-                                                    let interval = item.interval.grow(item.interval.duration_ns() / 20);
+                                                    let interval = item
+                                                        .interval
+                                                        .grow(item.interval.duration_ns() / 20);
                                                     ProfApp::zoom(cx, interval);
                                                     level2_slot.expanded = true;
                                                     level1_slot.expanded = true;
