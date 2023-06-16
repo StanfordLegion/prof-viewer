@@ -99,6 +99,7 @@ struct SearchState {
     // Cache of matching items
     result_set: BTreeSet<ItemUID>,
     result_cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, SearchCacheItem>>>,
+    entry_tree: BTreeMap<u64, (u64, BTreeMap<u64, (u64, BTreeMap<u64, u64>)>)>,
 }
 
 struct Config {
@@ -1062,6 +1063,39 @@ impl SearchState {
                 });
         }
     }
+
+    fn build_entry_tree(&mut self) {
+        for (entry_id, cache) in &self.result_cache {
+            let cache_size: u64 = cache.values().map(|x| x.len() as u64).sum();
+            if cache_size == 0 {
+                continue;
+            }
+
+            let level0_index = entry_id.slot_index(0).unwrap();
+            let level1_index = entry_id.slot_index(1).unwrap();
+            let level2_index = entry_id.slot_index(2).unwrap();
+
+            let (level0_count, level0_subtree) = self
+                .entry_tree
+                .entry(level0_index)
+                .or_insert_with(|| (0, BTreeMap::new()));
+            let (level1_count, level1_subtree) = level0_subtree
+                .entry(level1_index)
+                .or_insert_with(|| (0, BTreeMap::new()));
+            let level2_count = level1_subtree.entry(level2_index).or_insert(0);
+
+            // At each level, we add one to account for the collapsible header.
+            if *level2_count != cache_size {
+                *level2_count = cache_size + 1;
+
+                // Bubble results up to the root of the tree.
+                *level1_count = level1_subtree.values().sum();
+                *level1_count += 1;
+                *level0_count = level0_subtree.values().map(|(x, _)| x).sum();
+                *level0_count += 1;
+            }
+        }
+    }
 }
 
 impl Config {
@@ -1319,24 +1353,72 @@ impl Window {
         } else {
             ui.label(format!("Found {} results.", num_results));
         }
+
+        self.config.search_state.build_entry_tree();
+        let num_rows: u64 = self.config.search_state.entry_tree.values().map(|(x, _)| x).sum();
+
         ScrollArea::vertical()
             // Hack: estimate size of bottom UI.
             .max_height(ui.available_height() - 70.0)
             .auto_shrink([false; 2])
-            .show_rows(ui, cx.row_height, num_results, |ui, row_range| {
-                let cache = self.config.search_state.result_cache.values();
-                let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
-                let rows = rows
-                    .skip(row_range.start)
-                    .take(row_range.end - row_range.start);
-                for row in rows {
-                    let button = egui::widgets::Button::new(&row.title).small().wrap(false);
-                    if ui.add(button).clicked() {
-                        let interval = row.interval.grow(row.interval.duration_ns() / 20);
-                        ProfApp::zoom(cx, interval);
-                        self.panel.expand_slot(&row.entry_id, 0);
+            .show_rows(ui, cx.row_height, num_rows as usize, |ui, row_range| {
+                let mut row_index = 0;
+                let root_tree = &self.config.search_state.entry_tree;
+                for (level0_index, (level0_count, level0_subtree)) in root_tree {
+                    if row_index + level0_count < row_range.start as u64 {
+                        row_index += level0_count;
+                        continue;
                     }
+                    let level0_slot = &mut self.panel.slots[*level0_index as usize];
+                    ui.collapsing(&level0_slot.long_name, |ui| {
+                        for (level1_index, (level1_count, level1_subtree)) in level0_subtree {
+                            if row_index + level1_count < row_range.start as u64 {
+                                row_index += level1_count;
+                                continue;
+                            }
+                            let level1_slot = &mut level0_slot.slots[*level1_index as usize];
+                            ui.collapsing(&level1_slot.long_name, |ui| {
+                                for (level2_index, level2_count) in level1_subtree {
+                                    if row_index + level2_count < row_range.start as u64 {
+                                        row_index += level2_count;
+                                        continue;
+                                    }
+                                    let level2_slot = &mut level1_slot.slots[*level2_index as usize];
+                                    ui.collapsing(&level2_slot.long_name, |ui| {
+                                        let cache = self.config.search_state.result_cache.get(&level2_slot.entry_id).unwrap();
+                                        for tile_cache in cache.values() {
+                                            for item in tile_cache.values() {
+                                                let button = egui::widgets::Button::new(&item.title).small().wrap(false);
+                                                if ui.add(button).clicked() {
+                                                    let interval = item.interval.grow(item.interval.duration_ns() / 20);
+                                                    ProfApp::zoom(cx, interval);
+                                                    level2_slot.expanded = true;
+                                                    level1_slot.expanded = true;
+                                                    level0_slot.expanded = true;
+                                                    // self.panel.expand_slot(&item.entry_id, 0);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
                 }
+
+                // let cache = self.config.search_state.result_cache.values();
+                // let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
+                // let rows = rows
+                //     .skip(row_range.start)
+                //     .take(row_range.end - row_range.start);
+                // for row in rows {
+                //     let button = egui::widgets::Button::new(&row.title).small().wrap(false);
+                //     if ui.add(button).clicked() {
+                //         let interval = row.interval.grow(row.interval.duration_ns() / 20);
+                //         ProfApp::zoom(cx, interval);
+                //         self.panel.expand_slot(&row.entry_id, 0);
+                //     }
+                // }
             });
     }
 
