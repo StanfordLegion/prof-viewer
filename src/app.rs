@@ -999,7 +999,7 @@ impl SearchState {
     }
 
     fn is_match(&self, item: &ItemMeta) -> bool {
-        item.title.find(&self.query).is_some()
+        item.title.contains(&self.query)
     }
 
     const MAX_SEARCH_RESULTS: usize = 1000;
