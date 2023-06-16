@@ -663,11 +663,11 @@ impl Entry for Slot {
         }
 
         for (tile_id, tile) in &self.tile_metas {
-            if !config.search_state.start_tile(self, *tile_id) {
-                continue;
-            }
-
             if let Some(tile) = tile {
+                if !config.search_state.start_tile(self, *tile_id) {
+                    continue;
+                }
+
                 for (row, row_items) in tile.items.iter().enumerate() {
                     for (col, item) in row_items.iter().enumerate() {
                         if config.search_state.is_match(item) {
