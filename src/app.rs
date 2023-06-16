@@ -80,11 +80,8 @@ struct SearchCacheItem {
     // For horizontal scroll, we need the item's interval
     interval: Interval,
 
-    // For vertical scroll, we need the item's location
+    // For vertical scroll, we need the item's entry
     entry_id: EntryID,
-    tile_id: TileID,
-    row: usize,
-    col: usize,
 
     // Cache fields for display
     title: String,
@@ -686,10 +683,10 @@ impl Entry for Slot {
                     continue;
                 }
 
-                for (row, row_items) in tile.items.iter().enumerate() {
-                    for (col, item) in row_items.iter().enumerate() {
+                for row_items in &tile.items {
+                    for item in row_items {
                         if config.search_state.is_match(item) {
-                            config.search_state.insert(self, *tile_id, row, col, item);
+                            config.search_state.insert(self, *tile_id, item);
                         }
                     }
                 }
@@ -1044,14 +1041,7 @@ impl SearchState {
         result
     }
 
-    fn insert<E: Entry>(
-        &mut self,
-        entry: &E,
-        tile_id: TileID,
-        row: usize,
-        col: usize,
-        item: &ItemMeta,
-    ) {
+    fn insert<E: Entry>(&mut self, entry: &E, tile_id: TileID, item: &ItemMeta) {
         if self.result_set.len() >= Self::MAX_SEARCH_RESULTS {
             return;
         }
@@ -1068,9 +1058,6 @@ impl SearchState {
                 .or_insert_with(|| SearchCacheItem {
                     interval: item.original_interval,
                     entry_id: entry.entry_id().clone(),
-                    tile_id: tile_id,
-                    row,
-                    col,
                     title: item.title.clone(),
                 });
         }
