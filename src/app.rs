@@ -1297,33 +1297,34 @@ impl Window {
             return;
         }
 
-        ui.label(format!(
-            "Found {} results.",
-            self.config.search_state.result_set.len()
-        ));
+        let num_results = self.config.search_state.result_set.len();
+        if num_results >= SearchState::MAX_SEARCH_RESULTS {
+            ui.label(format!(
+                "Found {} results. (Limited to {}.)",
+                num_results,
+                SearchState::MAX_SEARCH_RESULTS
+            ));
+        } else {
+            ui.label(format!("Found {} results.", num_results));
+        }
         ScrollArea::vertical()
             // Hack: estimate size of bottom UI.
             .max_height(ui.available_height() - 70.0)
             .auto_shrink([false; 2])
-            .show_rows(
-                ui,
-                cx.row_height,
-                self.config.search_state.result_set.len(),
-                |ui, row_range| {
-                    let cache = self.config.search_state.result_cache.values();
-                    let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
-                    let rows = rows
-                        .skip(row_range.start)
-                        .take(row_range.end - row_range.start);
-                    for row in rows {
-                        let button = egui::widgets::Button::new(&row.title).small().wrap(false);
-                        if ui.add(button).clicked() {
-                            let interval = row.interval.grow(row.interval.duration_ns() / 20);
-                            ProfApp::zoom(cx, interval);
-                        }
+            .show_rows(ui, cx.row_height, num_results, |ui, row_range| {
+                let cache = self.config.search_state.result_cache.values();
+                let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
+                let rows = rows
+                    .skip(row_range.start)
+                    .take(row_range.end - row_range.start);
+                for row in rows {
+                    let button = egui::widgets::Button::new(&row.title).small().wrap(false);
+                    if ui.add(button).clicked() {
+                        let interval = row.interval.grow(row.interval.duration_ns() / 20);
+                        ProfApp::zoom(cx, interval);
                     }
-                },
-            );
+                }
+            });
     }
 
     fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
