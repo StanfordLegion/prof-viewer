@@ -96,6 +96,8 @@ struct SearchState {
     query: String,
     last_query: String,
     include_collapsed_entries: bool,
+    last_include_collapsed_entries: bool,
+    last_view_interval: Option<Interval>,
 
     // Cache of matching items
     result_set: BTreeSet<ItemUID>,
@@ -656,7 +658,10 @@ impl Entry for Slot {
     }
 
     fn search(&mut self, config: &mut Config, cx: &mut Context) {
-        config.search_state.start_entry(self);
+        if !config.search_state.start_entry(self) {
+            return;
+        }
+
         for (tile_id, tile) in &self.tile_metas {
             if !config.search_state.start_tile(self, *tile_id) {
                 continue;
@@ -941,13 +946,32 @@ impl SearchState {
         self.result_cache.clear();
     }
 
-    fn ensure_valid_cache(&mut self) {
-        // FIXME (Elliott): other invalidation cases (like on view interval change)
+    fn ensure_valid_cache(&mut self, cx: &Context) {
+        let mut invalidate = false;
 
-        // Invalidate cache when the search query changes.
+        // Invalidate when the search query changes.
         if self.query != self.last_query {
-            self.clear();
+            invalidate = true;
             self.last_query = self.query.clone();
+        }
+
+        // Invalidate when EXCLUDING collapsed entries. (I.e., because the
+        // searched set shrinks. Growing is ok because search is monotonic.)
+        if self.include_collapsed_entries != self.last_include_collapsed_entries
+            && !self.include_collapsed_entries
+        {
+            invalidate = true;
+            self.last_include_collapsed_entries = self.include_collapsed_entries;
+        }
+
+        // Invalidate when the view interval changes.
+        if self.last_view_interval != Some(cx.view_interval) {
+            invalidate = true;
+            self.last_view_interval = Some(cx.view_interval);
+        }
+
+        if invalidate {
+            self.clear();
         }
     }
 
@@ -955,7 +979,14 @@ impl SearchState {
         item.title.find(&self.query).is_some()
     }
 
-    fn start_entry<E: Entry>(&mut self, entry: &E) {
+    const MAX_SEARCH_RESULTS: usize = 1000;
+
+    fn start_entry<E: Entry>(&mut self, entry: &E) -> bool {
+        // Early exit if we found enough items.
+        if self.result_set.len() >= Self::MAX_SEARCH_RESULTS {
+            return false;
+        }
+
         // Double lookup is better than cloning unconditionally.
         if !self.result_cache.contains_key(entry.entry_id()) {
             self.result_cache
@@ -963,12 +994,17 @@ impl SearchState {
                 .or_insert_with(BTreeMap::new);
         }
 
-        // No result here because we need to recurse into the tiles
-        // regardless. Tiles can arrive asynchronously, and we don't want to
-        // manage a cache-invalidation scheme for tile inflation.
+        // Always recurse into tiles, because results can be fetched
+        // asynchronously.
+        true
     }
 
     fn start_tile<E: Entry>(&mut self, entry: &E, tile_id: TileID) -> bool {
+        // Early exit if we found enough items.
+        if self.result_set.len() >= Self::MAX_SEARCH_RESULTS {
+            return false;
+        }
+
         let mut result = true;
         // Always called second, so we know the entry exists.
         self.result_cache
@@ -990,8 +1026,7 @@ impl SearchState {
         col: usize,
         item: &ItemMeta,
     ) {
-        const MAX_SEARCH_RESULTS: usize = 1000;
-        if self.result_set.len() >= MAX_SEARCH_RESULTS {
+        if self.result_set.len() >= Self::MAX_SEARCH_RESULTS {
             return;
         }
 
@@ -1204,25 +1239,71 @@ impl Window {
     }
 
     fn search(&mut self, cx: &mut Context) {
-        // 0. Invalidate cache if the search query changed.
-        self.config.search_state.ensure_valid_cache();
+        // Invalidate cache if the search query changed.
+        self.config.search_state.ensure_valid_cache(cx);
 
-        // 1. Expand meta tiles. (Including collapsed entries, if requested).
+        // If search query empty, skip search. (Note: do this after
+        // invalidating cache, otherwise we get leftover search results when
+        // clearing the query.)
+        if self.config.search_state.query.is_empty() {
+            return;
+        }
+
+        // Expand meta tiles. (Including collapsed entries, if requested).
         self.panel.inflate_meta(&mut self.config, cx);
 
-        // 2. Search whatever data we have. Results are cached by entry/tile.
+        // Search whatever data we have. Results are cached by entry/tile.
         self.panel.search(&mut self.config, cx);
 
-        // 3. Done? Modify draw code to highlight cached items.
-        // 4. Code to render search results (hint: use cache).
+        // Cache is now full and we can highlight/render the entries.
     }
 
     fn search_box(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
-        ui.subheading("Search", cx);
-        ui.text_edit_singleline(&mut self.config.search_state.query);
-        if !self.config.search_state.query.is_empty() {
-            self.search(cx);
+        ui.subheading("Search Query", cx);
+        ui.horizontal(|ui| {
+            // Hack: need to estimate the button width or else the text box
+            // overflows. Refer to the source for egui::widgets::Button::ui
+            // for calculations.
+            let button_label = "✖";
+            let button_padding = ui.spacing().button_padding;
+            let available_width = ui.available_width() - 2.0 * button_padding.x;
+            let button_text: egui::WidgetText = "✖".into();
+            let button_text =
+                button_text.into_galley(ui, None, available_width, egui::TextStyle::Button);
+            let button_size = button_text.size() + 2.0 * button_padding;
+
+            let query_size = ui.available_size().x - button_size.x - ui.spacing().item_spacing.x;
+            egui::TextEdit::singleline(&mut self.config.search_state.query)
+                .desired_width(query_size)
+                .show(ui);
+            if ui.button(button_label).clicked() {
+                self.config.search_state.query.clear();
+            }
+        });
+        ui.checkbox(
+            &mut self.config.search_state.include_collapsed_entries,
+            "Include collapsed processors",
+        );
+        self.search(cx);
+    }
+
+    fn search_results(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
+        ui.subheading("Search Results", cx);
+        if self.config.search_state.query.is_empty() {
+            ui.label("Enter a search to see results displayed here.");
+            return;
         }
+
+        if self.config.search_state.result_set.is_empty() {
+            ui.label("No results found. Expand search to include collapsed processors?");
+
+            return;
+        }
+
+        ui.label(format!(
+            "Found {} results.",
+            self.config.search_state.result_set.len()
+        ));
     }
 
     fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
@@ -1231,8 +1312,7 @@ impl Window {
         ui.add_space(WIDGET_PADDING);
         self.search_box(ui, cx);
         ui.add_space(WIDGET_PADDING);
-        ui.subheading("Task Details", cx);
-        ui.label("Click on a task to see it displayed here.");
+        self.search_results(ui, cx);
     }
 }
 
