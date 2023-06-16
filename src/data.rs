@@ -68,6 +68,10 @@ pub struct Item {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ItemMeta {
     pub item_uid: ItemUID,
+    // As opposed to the interval in Item, which may get expanded for
+    // visibility, or sliced up into multiple tiles, this interval covers the
+    // entire duration of the original item, unexpanded and unsliced.
+    pub original_interval: Interval,
     pub title: String,
     pub fields: Vec<(String, Field)>,
 }

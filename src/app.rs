@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
@@ -75,9 +75,31 @@ struct Panel<S: Entry> {
     slots: Vec<S>,
 }
 
+#[derive(Debug)]
+struct SearchCacheItem {
+    // For horizontal scroll, we need the item's interval
+    interval: Interval,
+
+    // For vertical scroll, we need the item's location
+    entry_id: EntryID,
+    tile_id: TileID,
+    row: usize,
+    col: usize,
+
+    // Cache fields for display
+    title: String,
+}
+
 #[derive(Default)]
 struct SearchState {
-    cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, ItemMeta>>>,
+    // Search parameters
+    query: String,
+    last_query: String,
+    include_collapsed_entries: bool,
+
+    // Cache of matching items
+    result_set: BTreeSet<ItemUID>,
+    result_cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, SearchCacheItem>>>,
 }
 
 struct Config {
@@ -205,6 +227,10 @@ trait Entry {
     fn find_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Slot>;
     fn find_summary(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Summary>;
 
+    fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context);
+
+    fn search(&mut self, config: &mut Config, cx: &mut Context);
+
     fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let response = ui.allocate_rect(
             rect,
@@ -305,6 +331,10 @@ impl Entry for Summary {
         assert_eq!(entry_id.index(level - 1)?, EntryIndex::Summary);
         Some(self)
     }
+
+    fn inflate_meta(&mut self, _config: &mut Config, _cx: &mut Context) {}
+
+    fn search(&mut self, _config: &mut Config, _cx: &mut Context) {}
 
     fn content(
         &mut self,
@@ -619,6 +649,34 @@ impl Entry for Slot {
         unreachable!()
     }
 
+    fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
+        for tile_id in config.request_tiles(cx.view_interval) {
+            self.fetch_meta_tile(tile_id, config);
+        }
+    }
+
+    fn search(&mut self, config: &mut Config, cx: &mut Context) {
+        if config.search_state.start_entry(self) {
+            return;
+        }
+
+        for (tile_id, tile) in &self.tile_metas {
+            if config.search_state.start_tile(self, *tile_id) {
+                return;
+            }
+
+            if let Some(tile) = tile {
+                for (row, row_items) in tile.items.iter().enumerate() {
+                    for (col, item) in row_items.iter().enumerate() {
+                        if config.search_state.is_match(item) {
+                            config.search_state.insert(self, *tile_id, row, col, item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn content(
         &mut self,
         ui: &mut egui::Ui,
@@ -784,6 +842,34 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
+    fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
+        let force = config.search_state.include_collapsed_entries;
+        if self.expanded || force {
+            for slot in &mut self.slots {
+                // Apply visibility settings
+                if !force && !Self::is_slot_visible(slot.entry_id(), config) {
+                    continue;
+                }
+
+                slot.inflate_meta(config, cx);
+            }
+        }
+    }
+
+    fn search(&mut self, config: &mut Config, cx: &mut Context) {
+        let force = config.search_state.include_collapsed_entries;
+        if self.expanded || force {
+            for slot in &mut self.slots {
+                // Apply visibility settings
+                if !force && !Self::is_slot_visible(slot.entry_id(), config) {
+                    continue;
+                }
+
+                slot.search(config, cx);
+            }
+        }
+    }
+
     fn content(
         &mut self,
         ui: &mut egui::Ui,
@@ -849,6 +935,93 @@ impl<S: Entry> Entry for Panel<S> {
 
     fn toggle_expanded(&mut self) {
         self.expanded = !self.expanded;
+    }
+}
+
+impl SearchState {
+    fn clear(&mut self) {
+        self.result_set.clear();
+        self.result_cache.clear();
+    }
+
+    fn ensure_valid_cache(&mut self) {
+        // FIXME (Elliott): other invalidation cases (like on view interval change)
+
+        // Invalidate cache when the search query changes.
+        if self.query != self.last_query {
+            self.clear();
+            self.last_query = self.query.clone();
+        }
+    }
+
+    fn is_match(&self, item: &ItemMeta) -> bool {
+        item.title.find(&self.query).is_some()
+    }
+
+    fn start_entry<E>(&mut self, entry: &E) -> bool
+    where
+        E: Entry,
+    {
+        // Don't search if it already exists.
+        if self.result_cache.contains_key(entry.entry_id()) {
+            return false;
+        }
+
+        // Double lookup is better than cloning unconditionally.
+        self.result_cache
+            .entry(entry.entry_id().clone())
+            .or_insert_with(BTreeMap::new);
+        true
+    }
+
+    fn start_tile<E>(&mut self, entry: &E, tile_id: TileID) -> bool
+    where
+        E: Entry,
+    {
+        let mut result = true;
+        // Always called second, so we know the entry exists.
+        self.result_cache
+            .get_mut(entry.entry_id())
+            .unwrap()
+            .entry(tile_id)
+            .and_modify(|_| {
+                result = false;
+            })
+            .or_insert_with(BTreeMap::new);
+        result
+    }
+
+    fn insert<E: Entry>(
+        &mut self,
+        entry: &E,
+        tile_id: TileID,
+        row: usize,
+        col: usize,
+        item: &ItemMeta,
+    ) {
+        const MAX_SEARCH_RESULTS: usize = 1000;
+        if self.result_set.len() >= MAX_SEARCH_RESULTS {
+            return;
+        }
+
+        // We want each item to appear once, so check the result set first
+        // before inserting.
+        if self.result_set.insert(item.item_uid) {
+            self.result_cache
+                .get_mut(entry.entry_id())
+                .unwrap()
+                .get_mut(&tile_id)
+                .unwrap()
+                .entry(item.item_uid)
+                .or_insert_with(|| SearchCacheItem {
+                    interval: item.original_interval,
+                    entry_id: entry.entry_id().clone(),
+                    tile_id: tile_id,
+                    row,
+                    col,
+                    title: item.title.clone(),
+                });
+        }
     }
 }
 
@@ -1039,12 +1212,36 @@ impl Window {
         }
     }
 
-    fn search(&mut self, query: &str, cx: &mut Context) {
-        // 1. Expand all meta tiles. Including collapsed entries.
+    fn search(&mut self, cx: &mut Context) {
+        // 0. Invalidate cache if the search query changed.
+        self.config.search_state.ensure_valid_cache();
+
+        // 1. Expand meta tiles. (Including collapsed entries, if requested).
+        self.panel.inflate_meta(&mut self.config, cx);
+
         // 2. Search whatever data we have. Results are cached by entry/tile.
+        self.panel.search(&mut self.config, cx);
+
         // 3. Done? Modify draw code to highlight cached items.
-        // 4. Cache invalidation. Maybe on zoom?
-        // 5. Code to render search results (hint: use cache).
+        // 4. Code to render search results (hint: use cache).
+    }
+
+    fn search_box(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
+        ui.subheading("Search", cx);
+        ui.text_edit_singleline(&mut self.config.search_state.query);
+        if !self.config.search_state.query.is_empty() {
+            self.search(cx);
+        }
+    }
+
+    fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
+        const WIDGET_PADDING: f32 = 8.0;
+        ui.heading(format!("Profile {}: Task Details", self.index));
+        ui.add_space(WIDGET_PADDING);
+        self.search_box(ui, cx);
+        ui.add_space(WIDGET_PADDING);
+        ui.subheading("Task Details", cx);
+        ui.label("Click on a task to see it displayed here.");
     }
 }
 
@@ -1379,11 +1576,12 @@ impl eframe::App for ProfApp {
                 });
             }
 
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.heading("Task Details");
-                ui.label("Click on a task to see it displayed here.");
-            });
+            for window in windows.iter_mut() {
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    window.search_controls(ui, cx);
+                });
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 ui.horizontal(|ui| {

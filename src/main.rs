@@ -177,6 +177,7 @@ impl RandomDataSource {
                     });
                     row_item_metas.push(ItemMeta {
                         item_uid,
+                        original_interval: Interval::new(start, stop),
                         title: "Test Item".to_owned(),
                         fields: vec![
                             (
