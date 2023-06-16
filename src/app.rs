@@ -1304,6 +1304,29 @@ impl Window {
             "Found {} results.",
             self.config.search_state.result_set.len()
         ));
+        ScrollArea::vertical()
+            // Hack: estimate size of bottom UI.
+            .max_height(ui.available_height() - 70.0)
+            .auto_shrink([false; 2])
+            .show_rows(
+                ui,
+                cx.row_height,
+                self.config.search_state.result_set.len(),
+                |ui, row_range| {
+                    let cache = self.config.search_state.result_cache.values();
+                    let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
+                    let rows = rows
+                        .skip(row_range.start)
+                        .take(row_range.end - row_range.start);
+                    for row in rows {
+                        let button = egui::widgets::Button::new(&row.title).small().wrap(false);
+                        if ui.add(button).clicked() {
+                            let interval = row.interval.grow(row.interval.duration_ns() / 20);
+                            ProfApp::zoom(cx, interval);
+                        }
+                    }
+                },
+            );
     }
 
     fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
@@ -1634,8 +1657,6 @@ impl eframe::App for ProfApp {
             let heading = TextStyle::Heading.resolve(ui.style()).size;
             // Just set this on every frame for now
             cx.subheading_size = (heading + body) * 0.5;
-
-            ui.heading("Legion Prof Tech Demo");
 
             const WIDGET_PADDING: f32 = 8.0;
             ui.add_space(WIDGET_PADDING);

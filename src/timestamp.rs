@@ -156,6 +156,13 @@ impl Interval {
     pub fn lerp(self, value: f32) -> Timestamp {
         Timestamp((value * (self.duration_ns() as f32)).round() as i64 + self.start.0)
     }
+    // Grow (shrink) interval by duration_ns on either side.
+    pub fn grow(self, duration_ns: i64) -> Self {
+        Self {
+            start: Timestamp(self.start.0 - duration_ns),
+            stop: Timestamp(self.stop.0 + duration_ns),
+        }
+    }
 }
 
 #[cfg(test)]
