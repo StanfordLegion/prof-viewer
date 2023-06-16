@@ -230,6 +230,8 @@ trait Entry {
     fn find_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Slot>;
     fn find_summary(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Summary>;
 
+    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()>;
+
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context);
 
     fn search(&mut self, config: &mut Config, cx: &mut Context);
@@ -333,6 +335,10 @@ impl Entry for Summary {
         assert_eq!(entry_id.level(), level);
         assert_eq!(entry_id.index(level - 1)?, EntryIndex::Summary);
         Some(self)
+    }
+
+    fn expand_slot(&mut self, _entry_id: &EntryID, _level: u64) -> Option<()> {
+        unreachable!()
     }
 
     fn inflate_meta(&mut self, _config: &mut Config, _cx: &mut Context) {}
@@ -652,6 +658,13 @@ impl Entry for Slot {
         unreachable!()
     }
 
+    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()> {
+        assert_eq!(entry_id.level(), level);
+        assert!(entry_id.slot_index(level - 1).is_some());
+        self.expanded = true;
+        Some(())
+    }
+
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
         for tile_id in config.request_tiles(cx.view_interval) {
             self.fetch_meta_tile(tile_id, config);
@@ -843,6 +856,14 @@ impl<S: Entry> Entry for Panel<S> {
         } else {
             self.summary.as_mut()?.find_summary(entry_id, level + 1)
         }
+    }
+
+    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()> {
+        self.slots
+            .get_mut(entry_id.slot_index(level)? as usize)?
+            .expand_slot(entry_id, level + 1);
+        self.expanded = true;
+        Some(())
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
@@ -1322,6 +1343,7 @@ impl Window {
                     if ui.add(button).clicked() {
                         let interval = row.interval.grow(row.interval.duration_ns() / 20);
                         ProfApp::zoom(cx, interval);
+                        self.panel.expand_slot(&row.entry_id, 0);
                     }
                 }
             });
