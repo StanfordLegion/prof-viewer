@@ -197,6 +197,7 @@ struct Context {
 
     debug: bool,
 
+    #[serde(skip)]
     zoom_state: ZoomState,
     #[serde(skip)]
     interval_state: IntervalSelectState,
@@ -1194,8 +1195,6 @@ impl Window {
                     }
                     cx.view_interval.start = start;
                     ProfApp::zoom(cx, cx.view_interval);
-                    cx.interval_state.start_error = None;
-                    cx.interval_state.stop_error = None;
                 }
                 Err(e) => {
                     cx.interval_state.start_error = Some(e.into());
@@ -1214,8 +1213,6 @@ impl Window {
                     }
                     cx.view_interval.stop = stop;
                     ProfApp::zoom(cx, cx.view_interval);
-                    cx.interval_state.start_error = None;
-                    cx.interval_state.stop_error = None;
                 }
                 Err(e) => {
                     cx.interval_state.stop_error = Some(e.into());
@@ -1390,6 +1387,8 @@ impl ProfApp {
         cx.zoom_state.index = cx.zoom_state.levels.len() - 1;
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
+        cx.interval_state.start_error = None;
+        cx.interval_state.stop_error = None;
     }
 
     fn undo_zoom(cx: &mut Context) {
@@ -1400,6 +1399,8 @@ impl ProfApp {
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
+        cx.interval_state.start_error = None;
+        cx.interval_state.stop_error = None;
     }
 
     fn redo_zoom(cx: &mut Context) {
@@ -1410,6 +1411,8 @@ impl ProfApp {
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
         cx.interval_state.start_buffer = cx.view_interval.start.to_string();
         cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
+        cx.interval_state.start_error = None;
+        cx.interval_state.stop_error = None;
     }
 
     fn keyboard(ctx: &egui::Context, cx: &mut Context) {
