@@ -234,7 +234,7 @@ trait Entry {
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context);
 
-    fn search(&mut self, config: &mut Config, cx: &mut Context);
+    fn search(&mut self, config: &mut Config);
 
     fn label(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let response = ui.allocate_rect(
@@ -341,9 +341,13 @@ impl Entry for Summary {
         unreachable!()
     }
 
-    fn inflate_meta(&mut self, _config: &mut Config, _cx: &mut Context) {}
+    fn inflate_meta(&mut self, _config: &mut Config, _cx: &mut Context) {
+        unreachable!()
+    }
 
-    fn search(&mut self, _config: &mut Config, _cx: &mut Context) {}
+    fn search(&mut self, _config: &mut Config) {
+        unreachable!()
+    }
 
     fn content(
         &mut self,
@@ -671,7 +675,7 @@ impl Entry for Slot {
         }
     }
 
-    fn search(&mut self, config: &mut Config, cx: &mut Context) {
+    fn search(&mut self, config: &mut Config) {
         if !config.search_state.start_entry(self) {
             return;
         }
@@ -880,7 +884,7 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
-    fn search(&mut self, config: &mut Config, cx: &mut Context) {
+    fn search(&mut self, config: &mut Config) {
         let force = config.search_state.include_collapsed_entries;
         if self.expanded || force {
             for slot in &mut self.slots {
@@ -889,7 +893,7 @@ impl<S: Entry> Entry for Panel<S> {
                     continue;
                 }
 
-                slot.search(config, cx);
+                slot.search(config);
             }
         }
     }
@@ -1271,7 +1275,7 @@ impl Window {
         self.panel.inflate_meta(&mut self.config, cx);
 
         // Search whatever data we have. Results are cached by entry/tile.
-        self.panel.search(&mut self.config, cx);
+        self.panel.search(&mut self.config);
 
         // Cache is now full and we can highlight/render the entries.
     }
