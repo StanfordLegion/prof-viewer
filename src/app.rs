@@ -658,8 +658,8 @@ impl Entry for Slot {
     fn search(&mut self, config: &mut Config, cx: &mut Context) {
         config.search_state.start_entry(self);
         for (tile_id, tile) in &self.tile_metas {
-            if config.search_state.start_tile(self, *tile_id) {
-                return;
+            if !config.search_state.start_tile(self, *tile_id) {
+                continue;
             }
 
             if let Some(tile) = tile {
