@@ -1355,34 +1355,20 @@ impl Window {
         }
 
         self.config.search_state.build_entry_tree();
-        let num_rows: u64 = self.config.search_state.entry_tree.values().map(|(x, _)| x).sum();
 
         ScrollArea::vertical()
             // Hack: estimate size of bottom UI.
             .max_height(ui.available_height() - 70.0)
             .auto_shrink([false; 2])
-            .show_rows(ui, cx.row_height, num_rows as usize, |ui, row_range| {
-                let mut row_index = 0;
+            .show(ui, |ui| {
                 let root_tree = &self.config.search_state.entry_tree;
-                for (level0_index, (level0_count, level0_subtree)) in root_tree {
-                    if row_index + level0_count < row_range.start as u64 {
-                        row_index += level0_count;
-                        continue;
-                    }
+                for (level0_index, (_, level0_subtree)) in root_tree {
                     let level0_slot = &mut self.panel.slots[*level0_index as usize];
                     ui.collapsing(&level0_slot.long_name, |ui| {
-                        for (level1_index, (level1_count, level1_subtree)) in level0_subtree {
-                            if row_index + level1_count < row_range.start as u64 {
-                                row_index += level1_count;
-                                continue;
-                            }
+                        for (level1_index, (_, level1_subtree)) in level0_subtree {
                             let level1_slot = &mut level0_slot.slots[*level1_index as usize];
                             ui.collapsing(&level1_slot.long_name, |ui| {
-                                for (level2_index, level2_count) in level1_subtree {
-                                    if row_index + level2_count < row_range.start as u64 {
-                                        row_index += level2_count;
-                                        continue;
-                                    }
+                                for level2_index in level1_subtree.keys() {
                                     let level2_slot = &mut level1_slot.slots[*level2_index as usize];
                                     ui.collapsing(&level2_slot.long_name, |ui| {
                                         let cache = self.config.search_state.result_cache.get(&level2_slot.entry_id).unwrap();
