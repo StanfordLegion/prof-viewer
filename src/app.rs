@@ -1041,9 +1041,8 @@ impl SearchState {
 
         let mut result = true;
         // Always called second, so we know the entry exists.
-        self.result_cache
-            .get_mut(entry.entry_id())
-            .unwrap()
+        let cache = self.result_cache.get_mut(entry.entry_id()).unwrap();
+        cache
             .entry(tile_id)
             .and_modify(|_| {
                 result = false;
@@ -1060,11 +1059,9 @@ impl SearchState {
         // We want each item to appear once, so check the result set first
         // before inserting.
         if self.result_set.insert(item.item_uid) {
-            self.result_cache
-                .get_mut(entry.entry_id())
-                .unwrap()
-                .get_mut(&tile_id)
-                .unwrap()
+            let cache = self.result_cache.get_mut(entry.entry_id()).unwrap();
+            let cache = cache.get_mut(&tile_id).unwrap();
+            cache
                 .entry(item.item_uid)
                 .or_insert_with(|| SearchCacheItem {
                     irow,
@@ -1378,12 +1375,8 @@ impl Window {
                                     let level2_slot =
                                         &mut level1_slot.slots[*level2_index as usize];
                                     ui.collapsing(&level2_slot.long_name, |ui| {
-                                        let cache = self
-                                            .config
-                                            .search_state
-                                            .result_cache
-                                            .get(&level2_slot.entry_id)
-                                            .unwrap();
+                                        let cache = &self.config.search_state.result_cache;
+                                        let cache = cache.get(&level2_slot.entry_id).unwrap();
                                         for tile_cache in cache.values() {
                                             for item in tile_cache.values() {
                                                 let button =
