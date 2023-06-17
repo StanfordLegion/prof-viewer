@@ -1013,7 +1013,7 @@ impl SearchState {
         item.title.contains(&self.query)
     }
 
-    const MAX_SEARCH_RESULTS: usize = 10000;
+    const MAX_SEARCH_RESULTS: usize = 100_000;
 
     fn start_entry<E: Entry>(&mut self, entry: &E) -> bool {
         // Early exit if we found enough items.
