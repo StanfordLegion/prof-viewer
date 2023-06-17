@@ -204,6 +204,18 @@ impl EntryID {
                 .map_or(EntryIndex::Summary, EntryIndex::Slot),
         )
     }
+
+    pub fn has_prefix(&self, prefix: &EntryID) -> bool {
+        if prefix.0.len() > self.0.len() {
+            return false;
+        }
+        for (a, b) in self.0.iter().zip(prefix.0.iter()) {
+            if a != b {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 impl EntryInfo {

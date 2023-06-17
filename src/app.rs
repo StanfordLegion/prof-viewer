@@ -77,6 +77,10 @@ struct Panel<S: Entry> {
 
 #[derive(Debug)]
 struct SearchCacheItem {
+    // For vertical scroll, we need the item's row index (note: reversed,
+    // because we're in screen space)
+    irow: usize,
+
     // For horizontal scroll, we need the item's interval
     interval: Interval,
 
@@ -97,6 +101,7 @@ struct SearchState {
     result_set: BTreeSet<ItemUID>,
     result_cache: BTreeMap<EntryID, BTreeMap<TileID, BTreeMap<ItemUID, SearchCacheItem>>>,
     entry_tree: BTreeMap<u64, BTreeMap<u64, BTreeSet<u64>>>,
+    item_select: Option<(EntryID, usize)>,
 }
 
 struct Config {
@@ -274,7 +279,7 @@ trait Entry {
         cx: &mut Context,
     );
 
-    fn height(&self, config: &Config, cx: &Context) -> f32;
+    fn height(&self, prefix: Option<&EntryID>, config: &Config, cx: &Context) -> f32;
 
     fn is_expandable(&self) -> bool;
 
@@ -443,7 +448,8 @@ impl Entry for Summary {
         }
     }
 
-    fn height(&self, _config: &Config, cx: &Context) -> f32 {
+    fn height(&self, prefix: Option<&EntryID>, _config: &Config, cx: &Context) -> f32 {
+        assert!(prefix.is_none());
         const ROWS: u64 = 4;
         ROWS as f32 * cx.row_height
     }
@@ -678,10 +684,12 @@ impl Entry for Slot {
                     continue;
                 }
 
-                for row_items in &tile.items {
+                for (row, row_items) in tile.items.iter().enumerate() {
                     for item in row_items {
                         if config.search_state.is_match(item) {
-                            config.search_state.insert(self, *tile_id, item);
+                            // Reverse rows because we're in screen space
+                            let irow = tile.items.len() - row - 1;
+                            config.search_state.insert(self, *tile_id, irow, item);
                         }
                     }
                 }
@@ -727,7 +735,7 @@ impl Entry for Slot {
         }
     }
 
-    fn height(&self, _config: &Config, cx: &Context) -> f32 {
+    fn height(&self, _prefix: Option<&EntryID>, _config: &Config, cx: &Context) -> f32 {
         self.rows() as f32 * cx.row_height
     }
 
@@ -757,7 +765,7 @@ impl<S: Entry> Panel<S> {
         // Compute the size of this slot
         // This is in screen (i.e., rect) space
         let min_y = *y;
-        let max_y = min_y + slot.height(config, cx);
+        let max_y = min_y + slot.height(None, config, cx);
         *y = max_y + ROW_PADDING;
 
         // Cull if out of bounds
@@ -909,14 +917,14 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
-    fn height(&self, config: &Config, cx: &Context) -> f32 {
+    fn height(&self, prefix: Option<&EntryID>, config: &Config, cx: &Context) -> f32 {
         const UNEXPANDED_ROWS: u64 = 2;
         const ROW_PADDING: f32 = 4.0;
 
         let mut total = 0.0;
         let mut rows: i64 = 0;
         if let Some(summary) = &self.summary {
-            total += summary.height(config, cx);
+            total += summary.height(None, config, cx);
             rows += 1;
         } else if !self.expanded {
             // Need some minimum space if this panel has no summary and is collapsed
@@ -926,12 +934,27 @@ impl<S: Entry> Entry for Panel<S> {
 
         if self.expanded {
             for slot in &self.slots {
+                if let Some(prefix) = prefix {
+                    // If this is our entry, stop
+                    if slot.entry_id() == prefix {
+                        break;
+                    }
+                }
+
                 // Apply visibility settings
                 if !Self::is_slot_visible(slot.entry_id(), config) {
                     continue;
                 }
 
-                total += slot.height(config, cx);
+                total += slot.height(prefix, config, cx);
+
+                if let Some(prefix) = prefix {
+                    // If we're a prefix of the entry, recurse and then stop
+                    if prefix.has_prefix(slot.entry_id()) {
+                        break;
+                    }
+                }
+
                 rows += 1;
             }
         }
@@ -990,7 +1013,7 @@ impl SearchState {
         item.title.contains(&self.query)
     }
 
-    const MAX_SEARCH_RESULTS: usize = 1000;
+    const MAX_SEARCH_RESULTS: usize = 10000;
 
     fn start_entry<E: Entry>(&mut self, entry: &E) -> bool {
         // Early exit if we found enough items.
@@ -1029,7 +1052,7 @@ impl SearchState {
         result
     }
 
-    fn insert<E: Entry>(&mut self, entry: &E, tile_id: TileID, item: &ItemMeta) {
+    fn insert<E: Entry>(&mut self, entry: &E, tile_id: TileID, irow: usize, item: &ItemMeta) {
         if self.result_set.len() >= Self::MAX_SEARCH_RESULTS {
             return;
         }
@@ -1044,6 +1067,7 @@ impl SearchState {
                 .unwrap()
                 .entry(item.item_uid)
                 .or_insert_with(|| SearchCacheItem {
+                    irow,
                     interval: item.original_interval,
                     title: item.title.clone(),
                 });
@@ -1120,11 +1144,20 @@ impl Window {
         ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show_viewport(ui, |ui, viewport| {
-                let height = self.panel.height(&self.config, cx);
+                let height = self.panel.height(None, &self.config, cx);
                 ui.set_height(height);
                 ui.set_width(ui.available_width());
 
                 let rect = Rect::from_min_size(ui.min_rect().min, viewport.size());
+
+                if let Some((ref entry_id, irow)) = self.config.search_state.item_select {
+                    let prefix_height = self.panel.height(Some(entry_id), &self.config, cx);
+                    let mut item_rect =
+                        rect.translate(Vec2::new(0.0, prefix_height + irow as f32 * cx.row_height));
+                    item_rect.set_height(cx.row_height);
+                    ui.scroll_to_rect(item_rect, Some(egui::Align::Center));
+                    self.config.search_state.item_select = None;
+                }
 
                 // Root panel has no label
                 self.panel.content(ui, rect, viewport, &mut self.config, cx);
@@ -1360,6 +1393,10 @@ impl Window {
                                                         .interval
                                                         .grow(item.interval.duration_ns() / 20);
                                                     ProfApp::zoom(cx, interval);
+                                                    self.config.search_state.item_select = Some((
+                                                        level2_slot.entry_id.clone(),
+                                                        item.irow,
+                                                    ));
                                                     level2_slot.expanded = true;
                                                     level1_slot.expanded = true;
                                                     level0_slot.expanded = true;

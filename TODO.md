@@ -23,3 +23,5 @@
 - [ ] Search (with load all data option to get better search results)
 - [ ] Task detail view
 - [ ] Keyboard bindings (e.g., arrow keys to select panels, space bar to toggle expand/collapse)
+- [ ] Open window to show key bindings
+- [ ] Editable key bindings?
