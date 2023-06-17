@@ -225,8 +225,6 @@ trait Entry {
     fn find_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Slot>;
     fn find_summary(&mut self, entry_id: &EntryID, level: u64) -> Option<&mut Summary>;
 
-    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()>;
-
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context);
 
     fn search(&mut self, config: &mut Config);
@@ -330,10 +328,6 @@ impl Entry for Summary {
         assert_eq!(entry_id.level(), level);
         assert_eq!(entry_id.index(level - 1)?, EntryIndex::Summary);
         Some(self)
-    }
-
-    fn expand_slot(&mut self, _entry_id: &EntryID, _level: u64) -> Option<()> {
-        unreachable!()
     }
 
     fn inflate_meta(&mut self, _config: &mut Config, _cx: &mut Context) {
@@ -657,13 +651,6 @@ impl Entry for Slot {
         unreachable!()
     }
 
-    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()> {
-        assert_eq!(entry_id.level(), level);
-        assert!(entry_id.slot_index(level - 1).is_some());
-        self.expanded = true;
-        Some(())
-    }
-
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
         for tile_id in config.request_tiles(cx.view_interval) {
             self.fetch_meta_tile(tile_id, config);
@@ -857,14 +844,6 @@ impl<S: Entry> Entry for Panel<S> {
         }
     }
 
-    fn expand_slot(&mut self, entry_id: &EntryID, level: u64) -> Option<()> {
-        self.slots
-            .get_mut(entry_id.slot_index(level)? as usize)?
-            .expand_slot(entry_id, level + 1);
-        self.expanded = true;
-        Some(())
-    }
-
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
         let force = config.search_state.include_collapsed_entries;
         if self.expanded || force {
@@ -965,6 +944,7 @@ impl SearchState {
     fn clear(&mut self) {
         self.result_set.clear();
         self.result_cache.clear();
+        self.entry_tree.clear();
     }
 
     fn ensure_valid_cache(&mut self, cx: &Context) {
@@ -1287,7 +1267,6 @@ impl Window {
     }
 
     fn search_box(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
-        ui.subheading("Search Query", cx);
         ui.horizontal(|ui| {
             // Hack: need to estimate the button width or else the text box
             // overflows. Refer to the source for egui::widgets::Button::ui
@@ -1316,7 +1295,6 @@ impl Window {
     }
 
     fn search_results(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
-        ui.subheading("Search Results", cx);
         if self.config.search_state.query.is_empty() {
             ui.label("Enter a search to see results displayed here.");
             return;
@@ -1366,9 +1344,7 @@ impl Window {
                                         for tile_cache in cache.values() {
                                             for item in tile_cache.values() {
                                                 let button =
-                                                    egui::widgets::Button::new(&item.title)
-                                                        .small()
-                                                        .wrap(false);
+                                                    egui::widgets::Button::new(&item.title).small();
                                                 if ui.add(button).clicked() {
                                                     let interval = item
                                                         .interval
@@ -1377,7 +1353,6 @@ impl Window {
                                                     level2_slot.expanded = true;
                                                     level1_slot.expanded = true;
                                                     level0_slot.expanded = true;
-                                                    // self.panel.expand_slot(&item.entry_id, 0);
                                                 }
                                             }
                                         }
@@ -1387,26 +1362,12 @@ impl Window {
                         }
                     });
                 }
-
-                // let cache = self.config.search_state.result_cache.values();
-                // let rows = cache.flat_map(|x| x.values()).flat_map(|y| y.values());
-                // let rows = rows
-                //     .skip(row_range.start)
-                //     .take(row_range.end - row_range.start);
-                // for row in rows {
-                //     let button = egui::widgets::Button::new(&row.title).small().wrap(false);
-                //     if ui.add(button).clicked() {
-                //         let interval = row.interval.grow(row.interval.duration_ns() / 20);
-                //         ProfApp::zoom(cx, interval);
-                //         self.panel.expand_slot(&row.entry_id, 0);
-                //     }
-                // }
             });
     }
 
     fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
         const WIDGET_PADDING: f32 = 8.0;
-        ui.heading(format!("Profile {}: Task Details", self.index));
+        ui.heading(format!("Profile {}: Search", self.index));
         ui.add_space(WIDGET_PADDING);
         self.search_box(ui, cx);
         ui.add_space(WIDGET_PADDING);
