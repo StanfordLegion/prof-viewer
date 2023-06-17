@@ -568,7 +568,17 @@ impl Slot {
                     hover_pos = None;
                     interact_item = Some((row, item_idx, item_rect, tile_id));
                 }
-                ui.painter().rect(item_rect, 0.0, item.color, Stroke::NONE);
+
+                let mut color = item.color;
+                if !config.search_state.result_set.is_empty() {
+                    if config.search_state.result_set.contains(&item.item_uid) {
+                        color = Color32::RED;
+                    } else {
+                        color = color.gamma_multiply(0.2);
+                    }
+                }
+
+                ui.painter().rect(item_rect, 0.0, color, Stroke::NONE);
             }
         }
 
