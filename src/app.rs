@@ -576,7 +576,7 @@ impl Slot {
                 }
 
                 let mut color = item.color;
-                if !config.search_state.result_set.is_empty() {
+                if !config.search_state.query.is_empty() {
                     if config.search_state.result_set.contains(&item.item_uid) {
                         color = Color32::RED;
                     } else {
