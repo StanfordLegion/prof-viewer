@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::data::{EntryID, EntryIDSlug, SlugParseError, TileID, TileIDSlug};
 
@@ -14,8 +14,7 @@ pub struct TileRequest {
     pub tile_id: TileID,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename = "TileRequest")]
+#[derive(Debug, Clone)]
 pub struct TileRequestRef<'a> {
     pub entry_id: &'a EntryID,
     pub tile_id: TileID,
