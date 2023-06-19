@@ -7,8 +7,8 @@ rust-version = "1.67"
 
 [features]
 default = []
-client = ["dep:serde_json", "dep:reqwest", "dep:url"]
-server = ["dep:actix-cors", "dep:actix-web", "dep:serde_json"]
+client = ["dep:reqwest", "dep:url"]
+server = ["dep:actix-cors", "dep:actix-web"]
 
 [dependencies]
 egui = "0.22.0"
@@ -21,7 +21,7 @@ eframe = { version = "0.22.0", default-features = false, features = [
 log = "0.4"
 
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", optional = true }
+serde_json = { version = "1" }
 
 rand = { version = "0.8" }
 # transitive depedency, required for rand to support wasm
