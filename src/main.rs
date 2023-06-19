@@ -16,8 +16,6 @@ use legion_prof_viewer::deferred_data::DeferredDataSourceWrapper;
 use legion_prof_viewer::timestamp::{Interval, Timestamp};
 
 #[cfg(target_arch = "wasm32")]
-use legion_prof_viewer::console_log;
-#[cfg(target_arch = "wasm32")]
 use legion_prof_viewer::http::client::HTTPClientDataSource;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
@@ -48,7 +46,6 @@ fn main() {
     )
     .expect("Unable to parse query URL");
 
-    console_log!("Initializing Legion Profiler Viewer");
     legion_prof_viewer::app::start(vec![Box::new(HTTPClientDataSource::new(url))]);
 }
 
