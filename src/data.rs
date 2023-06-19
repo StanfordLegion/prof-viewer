@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub use egui::{Color32, Rgba};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -216,6 +218,11 @@ impl EntryID {
         }
         true
     }
+
+    pub fn from_slug(s: &str) -> Result<Self, std::num::ParseIntError> {
+        let elts: Result<Vec<_>, _> = s.split('_').map(|x| x.parse::<i64>()).collect();
+        Ok(Self(elts?))
+    }
 }
 
 impl EntryInfo {
@@ -265,5 +272,74 @@ impl EntryInfo {
             return result;
         }
         unreachable!()
+    }
+}
+
+#[derive(Debug)]
+pub enum SlugParseError {
+    ParseInt(std::num::ParseIntError),
+    TooFewValues,
+    TooManyValues,
+}
+
+impl fmt::Display for SlugParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SlugParseError::ParseInt(..) => write!(f, "parse error"),
+            SlugParseError::TooFewValues => write!(f, "too few values"),
+            SlugParseError::TooManyValues => write!(f, "too many values"),
+        }
+    }
+}
+
+impl std::error::Error for SlugParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SlugParseError::ParseInt(e) => Some(e),
+            SlugParseError::TooFewValues => None,
+            SlugParseError::TooManyValues => None,
+        }
+    }
+}
+
+impl From<std::num::ParseIntError> for SlugParseError {
+    fn from(e: std::num::ParseIntError) -> SlugParseError {
+        SlugParseError::ParseInt(e)
+    }
+}
+
+impl TileID {
+    pub fn from_slug(s: &str) -> Result<Self, SlugParseError> {
+        let elts: Result<Vec<i64>, _> = s.split('_').map(|x| x.parse::<i64>()).collect();
+        match elts?.as_slice() {
+            [start, stop] => Ok(Self(Interval::new(Timestamp(*start), Timestamp(*stop)))),
+            [_] => Err(SlugParseError::TooFewValues),
+            [] => Err(SlugParseError::TooFewValues),
+            _ => Err(SlugParseError::TooManyValues),
+        }
+    }
+}
+
+pub struct EntryIDSlug<'a>(pub &'a EntryID);
+
+impl<'a> fmt::Display for EntryIDSlug<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, e) in self.0 .0.iter().enumerate() {
+            write!(f, "{}", e)?;
+            if i < self.0 .0.len() - 1 {
+                write!(f, "_")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+pub struct TileIDSlug(pub TileID);
+
+impl fmt::Display for TileIDSlug {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0 .0.start.0)?;
+        write!(f, "_")?;
+        write!(f, "{}", self.0 .0.stop.0)
     }
 }

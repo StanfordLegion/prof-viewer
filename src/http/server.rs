@@ -2,22 +2,76 @@ use std::sync::Arc;
 
 use actix_cors::Cors;
 use actix_web::{
-    http, middleware,
+    error, get, http, middleware,
     web::{self, Data},
     App, HttpServer, Responder, Result,
 };
 
 use crate::data::DataSource;
-use crate::http::schema::TileRequest;
+use crate::http::schema::TileRequestPath;
 
-pub struct AppState {
-    pub data_source: Box<dyn DataSource + Send + Sync + 'static>,
+struct AppState {
+    data_source: Box<dyn DataSource + Send + Sync + 'static>,
 }
 
 pub struct DataSourceHTTPServer {
-    pub host: String,
-    pub port: u16,
-    pub state: AppState,
+    host: String,
+    port: u16,
+    state: AppState,
+}
+
+#[get("/info")]
+async fn fetch_info(state: web::Data<AppState>) -> Result<impl Responder> {
+    let result = state.data_source.fetch_info();
+    Ok(web::Json(result))
+}
+
+#[get("/tile_set")]
+async fn fetch_tile_set(state: web::Data<AppState>) -> Result<impl Responder> {
+    let result = state.data_source.fetch_tile_set();
+    Ok(web::Json(result))
+}
+
+#[get("/summary_tile/{entry_id}/{tile_id}")]
+async fn fetch_summary_tile(
+    req: web::Path<TileRequestPath>,
+    state: web::Data<AppState>,
+) -> Result<impl Responder> {
+    let req = req
+        .parse()
+        .map_err(|e| error::ErrorBadRequest(format!("bad request: {}", e)))?;
+    let result = state
+        .data_source
+        .fetch_summary_tile(&req.entry_id, req.tile_id);
+    Ok(web::Json(result))
+}
+
+#[get("/slot_tile/{entry_id}/{tile_id}")]
+async fn fetch_slot_tile(
+    req: web::Path<TileRequestPath>,
+    state: web::Data<AppState>,
+) -> Result<impl Responder> {
+    let req = req
+        .parse()
+        .map_err(|e| error::ErrorBadRequest(format!("bad request: {}", e)))?;
+    let result = state
+        .data_source
+        .fetch_slot_tile(&req.entry_id, req.tile_id);
+    Ok(web::Json(result))
+}
+
+#[get("/slot_meta_tile/{entry_id}/{tile_id}")]
+async fn fetch_slot_meta_tile(
+    req: web::Path<TileRequestPath>,
+    state: web::Data<AppState>,
+) -> Result<impl Responder> {
+    let req = req
+        .parse()
+        .map_err(|e| error::ErrorBadRequest(format!("bad request: {}", e)))?;
+    let result = state
+        .data_source
+        .fetch_slot_meta_tile(&req.entry_id, req.tile_id);
+    Ok(web::Json(result))
 }
 
 impl DataSourceHTTPServer {
@@ -33,48 +87,8 @@ impl DataSourceHTTPServer {
         }
     }
 
-    async fn fetch_info(state: web::Data<AppState>) -> Result<impl Responder> {
-        let result = state.data_source.fetch_info();
-        Ok(web::Json(result))
-    }
-
-    async fn fetch_tile_set(state: web::Data<AppState>) -> Result<impl Responder> {
-        let result = state.data_source.fetch_tile_set();
-        Ok(web::Json(result))
-    }
-
-    async fn fetch_summary_tile(
-        req: web::Json<TileRequest>,
-        state: web::Data<AppState>,
-    ) -> Result<impl Responder> {
-        let result = state
-            .data_source
-            .fetch_summary_tile(&req.entry_id, req.tile_id);
-        Ok(web::Json(result))
-    }
-
-    async fn fetch_slot_tile(
-        req: web::Json<TileRequest>,
-        state: web::Data<AppState>,
-    ) -> Result<impl Responder> {
-        let result = state
-            .data_source
-            .fetch_slot_tile(&req.entry_id, req.tile_id);
-        Ok(web::Json(result))
-    }
-
-    async fn fetch_slot_meta_tile(
-        req: web::Json<TileRequest>,
-        state: web::Data<AppState>,
-    ) -> Result<impl Responder> {
-        let result = state
-            .data_source
-            .fetch_slot_meta_tile(&req.entry_id, req.tile_id);
-        Ok(web::Json(result))
-    }
-
     #[actix_web::main]
-    pub async fn create_server(self) -> std::io::Result<()> {
+    pub async fn run(self) -> std::io::Result<()> {
         let state = Data::from(Arc::new(self.state));
         if std::env::var_os("RUST_LOG").is_none() {
             std::env::set_var("RUST_LOG", "info");
@@ -93,14 +107,11 @@ impl DataSourceHTTPServer {
                 .wrap(middleware::Compress::default())
                 .wrap(cors)
                 .app_data(state.clone())
-                .route("/info", web::post().to(Self::fetch_info))
-                .route("/tile_set", web::post().to(Self::fetch_tile_set))
-                .route("/summary_tile", web::post().to(Self::fetch_summary_tile))
-                .route("/slot_tile", web::post().to(Self::fetch_slot_tile))
-                .route(
-                    "/slot_meta_tile",
-                    web::post().to(Self::fetch_slot_meta_tile),
-                )
+                .service(fetch_info)
+                .service(fetch_tile_set)
+                .service(fetch_summary_tile)
+                .service(fetch_slot_tile)
+                .service(fetch_slot_meta_tile)
         })
         .bind((self.host.as_str(), self.port))?
         .run()

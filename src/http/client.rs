@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use log::info;
+
 #[cfg(not(target_arch = "wasm32"))]
 use reqwest::blocking::{Client, ClientBuilder};
 #[cfg(target_arch = "wasm32")]
@@ -37,16 +39,16 @@ impl HTTPClientDataSource {
         }
     }
 
-    fn request<T>(&mut self, url: Url, body: String, container: Arc<Mutex<Vec<T>>>)
+    fn request<T>(&mut self, url: Url, container: Arc<Mutex<Vec<T>>>)
     where
         T: 'static + Sync + Send + for<'a> Deserialize<'a>,
     {
+        info!("fetch: {}", url);
         let request = self
             .client
-            .post(url)
+            .get(url)
             .header("Accept", "*/*")
-            .header("Content-Type", "javascript/json;")
-            .body(body);
+            .header("Content-Type", "javascript/json;");
         fetch(
             request,
             move |response: Result<DataSourceResponse, String>| {
@@ -60,8 +62,7 @@ impl HTTPClientDataSource {
 impl DeferredDataSource for HTTPClientDataSource {
     fn fetch_info(&mut self) {
         let url = self.baseurl.join("/info").expect("invalid baseurl");
-        let body = String::new();
-        self.request::<DataSourceInfo>(url, body, self.infos.clone());
+        self.request::<DataSourceInfo>(url, self.infos.clone());
     }
 
     fn get_infos(&mut self) -> Vec<DataSourceInfo> {
@@ -70,8 +71,7 @@ impl DeferredDataSource for HTTPClientDataSource {
 
     fn fetch_tile_set(&mut self) {
         let url = self.baseurl.join("/tile_set").expect("invalid baseurl");
-        let body = String::new();
-        self.request::<TileSet>(url, body, self.tile_sets.clone());
+        self.request::<TileSet>(url, self.tile_sets.clone());
     }
 
     fn get_tile_sets(&mut self) -> Vec<TileSet> {
@@ -79,9 +79,13 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
-        let url = self.baseurl.join("/summary_tile").expect("invalid baseurl");
-        let body = serde_json::to_string(&TileRequestRef { entry_id, tile_id }).unwrap();
-        self.request::<SummaryTile>(url, body, self.summary_tiles.clone());
+        let req = TileRequestRef { entry_id, tile_id };
+        let url = self
+            .baseurl
+            .join("/summary_tile/")
+            .and_then(|u| u.join(&req.to_slug()))
+            .expect("invalid baseurl");
+        self.request::<SummaryTile>(url, self.summary_tiles.clone());
     }
 
     fn get_summary_tiles(&mut self) -> Vec<SummaryTile> {
@@ -89,9 +93,13 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
-        let url = self.baseurl.join("/slot_tile").expect("invalid baseurl");
-        let body = serde_json::to_string(&TileRequestRef { entry_id, tile_id }).unwrap();
-        self.request::<SlotTile>(url, body, self.slot_tiles.clone());
+        let req = TileRequestRef { entry_id, tile_id };
+        let url = self
+            .baseurl
+            .join("/slot_tile/")
+            .and_then(|u| u.join(&req.to_slug()))
+            .expect("invalid baseurl");
+        self.request::<SlotTile>(url, self.slot_tiles.clone());
     }
 
     fn get_slot_tiles(&mut self) -> Vec<SlotTile> {
@@ -99,12 +107,13 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
+        let req = TileRequestRef { entry_id, tile_id };
         let url = self
             .baseurl
-            .join("/slot_meta_tile")
+            .join("/slot_meta_tile/")
+            .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
-        let body = serde_json::to_string(&TileRequestRef { entry_id, tile_id }).unwrap();
-        self.request::<SlotMetaTile>(url, body, self.slot_meta_tiles.clone());
+        self.request::<SlotMetaTile>(url, self.slot_meta_tiles.clone());
     }
 
     fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTile> {
