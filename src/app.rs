@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
-use std::rc::Rc;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -119,7 +118,7 @@ struct Config {
     search_state: SearchState,
 
     last_request_interval: Option<Interval>,
-    request_tile_cache: Rc<Vec<TileID>>,
+    request_tile_cache: Vec<TileID>,
 }
 
 struct Window {
@@ -297,11 +296,11 @@ impl Summary {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval).iter() {
+        for tile_id in config.request_tiles(cx.view_interval) {
             config
                 .data_source
-                .fetch_summary_tile(&self.entry_id, *tile_id);
-            self.tiles.insert(*tile_id, None);
+                .fetch_summary_tile(&self.entry_id, tile_id);
+            self.tiles.insert(tile_id, None);
         }
     }
 }
@@ -485,10 +484,10 @@ impl Slot {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval).iter() {
-            config.data_source.fetch_slot_tile(&self.entry_id, *tile_id);
-            self.tile_ids.push(*tile_id);
-            self.tiles.insert(*tile_id, None);
+        for tile_id in config.request_tiles(cx.view_interval) {
+            config.data_source.fetch_slot_tile(&self.entry_id, tile_id);
+            self.tile_ids.push(tile_id);
+            self.tiles.insert(tile_id, None);
         }
     }
 
@@ -673,8 +672,8 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval).iter() {
-            self.fetch_meta_tile(*tile_id, config);
+        for tile_id in config.request_tiles(cx.view_interval) {
+            self.fetch_meta_tile(tile_id, config);
         }
     }
 
@@ -1113,21 +1112,18 @@ impl Config {
             data_source: CountingDeferredDataSource::new(data_source),
             search_state: SearchState::default(),
             last_request_interval: None,
-            request_tile_cache: Rc::new(Vec::new()),
+            request_tile_cache: Vec::new(),
         }
     }
 
-    fn request_tiles(&mut self, request_interval: Interval) -> Rc<Vec<TileID>> {
-        // Even though the lifetimes are generally very short, to avoid
-        // mutability issues, we store the cache in an Rc.
-
+    fn request_tiles(&mut self, request_interval: Interval) -> Vec<TileID> {
         if self.last_request_interval == Some(request_interval) {
             return self.request_tile_cache.clone();
         }
 
         if self.tile_set.tiles.is_empty() {
             // For dynamic profiles, just return the request as one tile.
-            self.request_tile_cache = Rc::new(vec![TileID(request_interval)]);
+            self.request_tile_cache = vec![TileID(request_interval)];
             return self.request_tile_cache.clone();
         }
 
@@ -1149,13 +1145,11 @@ impl Config {
             .unwrap();
 
         // Now filter to just tiles overlapping the requested interval.
-        self.request_tile_cache = Rc::new(
-            chosen_level
-                .iter()
-                .filter(|tile| request_interval.overlaps(tile.0))
-                .copied()
-                .collect(),
-        );
+        self.request_tile_cache = chosen_level
+            .iter()
+            .filter(|tile| request_interval.overlaps(tile.0))
+            .copied()
+            .collect();
         self.request_tile_cache.clone()
     }
 }
