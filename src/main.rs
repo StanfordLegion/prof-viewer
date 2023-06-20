@@ -260,11 +260,8 @@ impl DataSourceMut for RandomDataSource {
         DataSourceInfo {
             entry_info: self.entry_info().clone(),
             interval: self.interval(),
+            tile_set: TileSet::default(),
         }
-    }
-
-    fn fetch_tile_set(&mut self) -> TileSet {
-        TileSet::default()
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) -> SummaryTile {

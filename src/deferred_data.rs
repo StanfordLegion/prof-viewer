@@ -1,12 +1,10 @@
 use crate::data::{
-    DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
+    DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 
 pub trait DeferredDataSource {
     fn fetch_info(&mut self);
     fn get_infos(&mut self) -> Vec<DataSourceInfo>;
-    fn fetch_tile_set(&mut self);
-    fn get_tile_sets(&mut self) -> Vec<TileSet>;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID);
     fn get_summary_tiles(&mut self) -> Vec<SummaryTile>;
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID);
@@ -18,7 +16,6 @@ pub trait DeferredDataSource {
 pub struct DeferredDataSourceWrapper<T: DataSourceMut> {
     data_source: T,
     infos: Vec<DataSourceInfo>,
-    tile_sets: Vec<TileSet>,
     summary_tiles: Vec<SummaryTile>,
     slot_tiles: Vec<SlotTile>,
     slot_meta_tiles: Vec<SlotMetaTile>,
@@ -29,7 +26,6 @@ impl<T: DataSourceMut> DeferredDataSourceWrapper<T> {
         Self {
             data_source,
             infos: Vec::new(),
-            tile_sets: Vec::new(),
             summary_tiles: Vec::new(),
             slot_tiles: Vec::new(),
             slot_meta_tiles: Vec::new(),
@@ -44,14 +40,6 @@ impl<T: DataSourceMut> DeferredDataSource for DeferredDataSourceWrapper<T> {
 
     fn get_infos(&mut self) -> Vec<DataSourceInfo> {
         std::mem::take(&mut self.infos)
-    }
-
-    fn fetch_tile_set(&mut self) {
-        self.tile_sets.push(self.data_source.fetch_tile_set());
-    }
-
-    fn get_tile_sets(&mut self) -> Vec<TileSet> {
-        std::mem::take(&mut self.tile_sets)
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
@@ -122,16 +110,6 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
         self.finish_request(result)
     }
 
-    fn fetch_tile_set(&mut self) {
-        self.start_request();
-        self.data_source.fetch_tile_set()
-    }
-
-    fn get_tile_sets(&mut self) -> Vec<TileSet> {
-        let result = self.data_source.get_tile_sets();
-        self.finish_request(result)
-    }
-
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
         self.start_request();
         self.data_source.fetch_summary_tile(entry_id, tile_id)
@@ -170,14 +148,6 @@ impl DeferredDataSource for Box<dyn DeferredDataSource> {
 
     fn get_infos(&mut self) -> Vec<DataSourceInfo> {
         self.as_mut().get_infos()
-    }
-
-    fn fetch_tile_set(&mut self) {
-        self.as_mut().fetch_tile_set()
-    }
-
-    fn get_tile_sets(&mut self) -> Vec<TileSet> {
-        self.as_mut().get_tile_sets()
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {

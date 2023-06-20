@@ -107,15 +107,13 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
     }
 
     fn check_info(&mut self) -> Option<DataSourceInfo> {
-        let mut result = self.data_source.get_infos();
-        if result.is_empty() {
-            return None;
-        }
-        assert_eq!(result.len(), 1);
-        let result = result.pop().unwrap();
+        // We requested this once, so we know we'll get zero or one result
+        self.data_source.get_infos().pop()
+    }
+
+    fn write_info(&mut self, info: DataSourceInfo) {
         let path = self.path.join("info");
-        spawn_write(path, result.clone());
-        Some(result)
+        spawn_write(path, info);
     }
 
     fn write_summary_tiles(&mut self) {
@@ -154,11 +152,6 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
-    fn write_tile_set(&mut self, tile_set: TileSet) {
-        let path = self.path.join("tile_set");
-        spawn_write(path, tile_set);
-    }
-
     pub fn write(mut self) -> io::Result<()> {
         self.path = create_unique_dir(&self.path, self.force)?;
         create_dir(self.path.join("summary_tile"))?;
@@ -170,7 +163,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         while info.is_none() {
             info = self.check_info();
         }
-        let info = info.unwrap();
+        let mut info = info.unwrap();
 
         let entry_ids = walk_entry_list(&info.entry_info);
         for entry_id in &entry_ids {
@@ -185,6 +178,9 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 }
             }
         }
+
+        // For now, this only works on dynamic data sources
+        assert!(info.tile_set.tiles.is_empty());
 
         let mut tile_set = Vec::new();
 
@@ -224,7 +220,9 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             tile_set.push(tile_ids);
         }
 
-        self.write_tile_set(TileSet { tiles: tile_set });
+        info.tile_set = TileSet { tiles: tile_set };
+
+        self.write_info(info);
 
         Ok(())
     }

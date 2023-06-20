@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::rc::Rc;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::{
     DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemMeta, ItemUID, SlotMetaTileData,
-    SlotTileData, SummaryTileData, TileID, UtilPoint,
+    SlotTileData, SummaryTileData, TileID, TileSet, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 use crate::timestamp::{Interval, Timestamp, TimestampParseError};
@@ -111,10 +112,14 @@ struct Config {
 
     // This is just for the local profile
     interval: Interval,
+    tile_set: TileSet,
 
     data_source: CountingDeferredDataSource<Box<dyn DeferredDataSource>>,
 
     search_state: SearchState,
+
+    last_request_interval: Option<Interval>,
+    request_tile_cache: Rc<Vec<TileID>>,
 }
 
 struct Window {
@@ -292,11 +297,11 @@ impl Summary {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx.view_interval).iter() {
             config
                 .data_source
-                .fetch_summary_tile(&self.entry_id, tile_id);
-            self.tiles.insert(tile_id, None);
+                .fetch_summary_tile(&self.entry_id, *tile_id);
+            self.tiles.insert(*tile_id, None);
         }
     }
 }
@@ -480,10 +485,10 @@ impl Slot {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
-            config.data_source.fetch_slot_tile(&self.entry_id, tile_id);
-            self.tile_ids.push(tile_id);
-            self.tiles.insert(tile_id, None);
+        for tile_id in config.request_tiles(cx.view_interval).iter() {
+            config.data_source.fetch_slot_tile(&self.entry_id, *tile_id);
+            self.tile_ids.push(*tile_id);
+            self.tiles.insert(*tile_id, None);
         }
     }
 
@@ -668,8 +673,8 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
-            self.fetch_meta_tile(tile_id, config);
+        for tile_id in config.request_tiles(cx.view_interval).iter() {
+            self.fetch_meta_tile(*tile_id, config);
         }
     }
 
@@ -1095,27 +1100,68 @@ impl SearchState {
 }
 
 impl Config {
-    fn new(data_source: Box<dyn DeferredDataSource>, info: &DataSourceInfo) -> Self {
+    fn new(data_source: Box<dyn DeferredDataSource>, info: DataSourceInfo) -> Self {
         let max_node = info.entry_info.nodes();
         let interval = info.interval;
+        let tile_set = info.tile_set;
 
         Self {
             min_node: 0,
             max_node,
             interval,
+            tile_set,
             data_source: CountingDeferredDataSource::new(data_source),
             search_state: SearchState::default(),
+            last_request_interval: None,
+            request_tile_cache: Rc::new(Vec::new()),
         }
     }
 
-    fn request_tiles(&mut self, request_interval: Interval) -> Vec<TileID> {
-        // For now, always return a single tile
-        vec![TileID(request_interval)]
+    fn request_tiles(&mut self, request_interval: Interval) -> Rc<Vec<TileID>> {
+        // Even though the lifetimes are generally very short, to avoid
+        // mutability issues, we store the cache in an Rc.
+
+        if self.last_request_interval == Some(request_interval) {
+            return self.request_tile_cache.clone();
+        }
+
+        if self.tile_set.tiles.is_empty() {
+            // For dynamic profiles, just return the request as one tile.
+            self.request_tile_cache = Rc::new(vec![TileID(request_interval)]);
+            return self.request_tile_cache.clone();
+        }
+
+        // We're in a static profile. Estimate the best zoom level, where
+        // "best" minimizes the ratio of the tile size to request size.
+        let request_duration = request_interval.duration_ns();
+        let chosen_level = self
+            .tile_set
+            .tiles
+            .iter()
+            .min_by_key(|level| {
+                let d = level.first().unwrap().0.duration_ns();
+                if d < request_duration {
+                    request_duration / d
+                } else {
+                    d / request_duration
+                }
+            })
+            .unwrap();
+
+        // Now filter to just tiles overlapping the requested interval.
+        self.request_tile_cache = Rc::new(
+            chosen_level
+                .iter()
+                .filter(|tile| request_interval.overlaps(tile.0))
+                .copied()
+                .collect(),
+        );
+        self.request_tile_cache.clone()
     }
 }
 
 impl Window {
-    fn new(data_source: Box<dyn DeferredDataSource>, info: &DataSourceInfo, index: u64) -> Self {
+    fn new(data_source: Box<dyn DeferredDataSource>, info: DataSourceInfo, index: u64) -> Self {
         Self {
             panel: Panel::new(&info.entry_info, EntryID::root()),
             index,
@@ -1665,7 +1711,7 @@ impl eframe::App for ProfApp {
             // We made one request, so we know there is always zero or one
             // elements in this list.
             if let Some(info) = source.get_infos().pop() {
-                let window = Window::new(source, &info, windows.len() as u64);
+                let window = Window::new(source, info, windows.len() as u64);
                 if windows.is_empty() {
                     cx.total_interval = window.config.interval;
                 } else {

@@ -26,12 +26,6 @@ async fn fetch_info(state: web::Data<AppState>) -> Result<impl Responder> {
     Ok(web::Json(result))
 }
 
-#[get("/tile_set")]
-async fn fetch_tile_set(state: web::Data<AppState>) -> Result<impl Responder> {
-    let result = state.data_source.fetch_tile_set();
-    Ok(web::Json(result))
-}
-
 #[get("/summary_tile/{entry_id}/{tile_id}")]
 async fn fetch_summary_tile(
     req: web::Path<TileRequestPath>,
@@ -108,7 +102,6 @@ impl DataSourceHTTPServer {
                 .wrap(cors)
                 .app_data(state.clone())
                 .service(fetch_info)
-                .service(fetch_tile_set)
                 .service(fetch_summary_tile)
                 .service(fetch_slot_tile)
                 .service(fetch_slot_meta_tile)

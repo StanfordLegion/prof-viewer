@@ -1,14 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use crate::data::{
-    DataSource, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
+    DataSource, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::DeferredDataSource;
 
 pub struct ParallelDeferredDataSource<T: DataSource + Send + Sync + 'static> {
     data_source: Arc<T>,
     infos: Arc<Mutex<Vec<DataSourceInfo>>>,
-    tile_sets: Arc<Mutex<Vec<TileSet>>>,
     summary_tiles: Arc<Mutex<Vec<SummaryTile>>>,
     slot_tiles: Arc<Mutex<Vec<SlotTile>>>,
     slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTile>>>,
@@ -19,7 +18,6 @@ impl<T: DataSource + Send + Sync + 'static> ParallelDeferredDataSource<T> {
         Self {
             data_source: Arc::new(data_source),
             infos: Arc::new(Mutex::new(Vec::new())),
-            tile_sets: Arc::new(Mutex::new(Vec::new())),
             summary_tiles: Arc::new(Mutex::new(Vec::new())),
             slot_tiles: Arc::new(Mutex::new(Vec::new())),
             slot_meta_tiles: Arc::new(Mutex::new(Vec::new())),
@@ -39,19 +37,6 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
 
     fn get_infos(&mut self) -> Vec<DataSourceInfo> {
         std::mem::take(&mut self.infos.lock().unwrap())
-    }
-
-    fn fetch_tile_set(&mut self) {
-        let data_source = self.data_source.clone();
-        let tile_sets = self.tile_sets.clone();
-        rayon::spawn(move || {
-            let result = data_source.fetch_tile_set();
-            tile_sets.lock().unwrap().push(result);
-        });
-    }
-
-    fn get_tile_sets(&mut self) -> Vec<TileSet> {
-        std::mem::take(&mut self.tile_sets.lock().unwrap())
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID) {
