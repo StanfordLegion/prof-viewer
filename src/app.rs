@@ -1717,6 +1717,13 @@ impl ProfApp {
         result
     }
 
+    fn update_interval_state(cx: &mut Context) {
+        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
+        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
+        cx.interval_state.start_error = None;
+        cx.interval_state.stop_error = None;
+    }
+
     fn pan(cx: &mut Context, percent: PercentageInteger, dir: PanDirection) {
         if percent.value() == 0 {
             return;
@@ -1727,7 +1734,8 @@ impl ProfApp {
             PanDirection::Left => -1,
             PanDirection::Right => 1,
         };
-        cx.view_interval = cx.view_interval.translate(duration * sign)
+        cx.view_interval = cx.view_interval.translate(duration * sign);
+        ProfApp::update_interval_state(cx);
     }
 
     fn zoom(cx: &mut Context, interval: Interval) {
@@ -1739,10 +1747,7 @@ impl ProfApp {
         cx.zoom_state.levels.truncate(cx.zoom_state.index + 1);
         cx.zoom_state.levels.push(cx.view_interval);
         cx.zoom_state.index = cx.zoom_state.levels.len() - 1;
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        ProfApp::update_interval_state(cx);
     }
 
     fn undo_zoom(cx: &mut Context) {
@@ -1751,10 +1756,7 @@ impl ProfApp {
         }
         cx.zoom_state.index -= 1;
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        ProfApp::update_interval_state(cx);
     }
 
     fn redo_zoom(cx: &mut Context) {
@@ -1763,10 +1765,7 @@ impl ProfApp {
         }
         cx.zoom_state.index += 1;
         cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        ProfApp::update_interval_state(cx);
     }
 
     fn zoom_in(cx: &mut Context) {
