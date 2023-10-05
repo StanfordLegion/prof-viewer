@@ -8,6 +8,7 @@ use egui::{
     Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
+use percentage::{Percentage, PercentageInteger};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
@@ -1669,6 +1670,11 @@ impl Window {
     }
 }
 
+enum PanDirection {
+    Left,
+    Right,
+}
+
 impl ProfApp {
     /// Called once before the first frame.
     pub fn new(
@@ -1709,6 +1715,19 @@ impl ProfApp {
         cc.egui_ctx.set_visuals(theme);
 
         result
+    }
+
+    fn pan(cx: &mut Context, percent: PercentageInteger, dir: PanDirection) {
+        if percent.value() == 0 {
+            return;
+        }
+
+        let duration: i64 = percent.apply_to(cx.view_interval.duration_ns());
+        let sign: i64 = match dir {
+            PanDirection::Left => -1,
+            PanDirection::Right => 1,
+        };
+        cx.view_interval = cx.view_interval.translate(duration * sign)
     }
 
     fn zoom(cx: &mut Context, interval: Interval) {
@@ -1783,6 +1802,7 @@ impl ProfApp {
             UndoZoom,
             RedoZoom,
             ResetZoom,
+            Pan(PercentageInteger, PanDirection),
             ExpandVertical,
             ShrinkVertical,
             ResetVertical,
@@ -1814,8 +1834,20 @@ impl ProfApp {
                 } else {
                     Actions::NoAction
                 }
+            } else if i.modifiers.shift {
+                if i.key_pressed(egui::Key::ArrowLeft) {
+                    Actions::Pan(Percentage::from(1), PanDirection::Left)
+                } else if i.key_pressed(egui::Key::ArrowRight) {
+                    Actions::Pan(Percentage::from(1), PanDirection::Right)
+                } else {
+                    Actions::NoAction
+                }
             } else if i.key_pressed(egui::Key::H) {
                 Actions::ToggleControls
+            } else if i.key_pressed(egui::Key::ArrowLeft) {
+                Actions::Pan(Percentage::from(5), PanDirection::Left)
+            } else if i.key_pressed(egui::Key::ArrowRight) {
+                Actions::Pan(Percentage::from(5), PanDirection::Right)
             } else {
                 Actions::NoAction
             }
@@ -1826,6 +1858,7 @@ impl ProfApp {
             Actions::UndoZoom => ProfApp::undo_zoom(cx),
             Actions::RedoZoom => ProfApp::redo_zoom(cx),
             Actions::ResetZoom => ProfApp::zoom(cx, cx.total_interval),
+            Actions::Pan(percent, dir) => ProfApp::pan(cx, percent, dir),
             Actions::ExpandVertical => ProfApp::multiply_scale_factor(cx, 2.0),
             Actions::ShrinkVertical => ProfApp::multiply_scale_factor(cx, 0.5),
             Actions::ResetVertical => ProfApp::reset_scale_factor(cx),
@@ -1966,6 +1999,8 @@ impl ProfApp {
                     });
                 };
                 show_row("Zoom to Interval", "Click and Drag");
+                show_row("Pan 5%", "Left/Right Arrow");
+                show_row("Pan 1%", "Shift + Left/Right Arrow");
                 show_row("Zoom In", "Ctrl + Plus/Equals");
                 show_row("Zoom Out", "Ctrl + Minus");
                 show_row("Undo Zoom", "Ctrl + Left Arrow");
