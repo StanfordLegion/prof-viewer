@@ -2032,9 +2032,9 @@ impl ProfApp {
                 show_row("Pan 1%", "Shift + Left/Right Arrow");
                 show_row("Zoom In", "Ctrl + Plus/Equals");
                 show_row("Zoom Out", "Ctrl + Minus");
-                show_row("Undo Zoom", "Ctrl + Left Arrow");
-                show_row("Redo Zoom", "Ctrl + Right Arrow");
-                show_row("Reset Zoom", "Ctrl + 0");
+                show_row("Undo Pan/Zoom", "Ctrl + Left Arrow");
+                show_row("Redo Pan/Zoom", "Ctrl + Right Arrow");
+                show_row("Reset Pan/Zoom", "Ctrl + 0");
                 show_row("Expand Vertical Spacing", "Ctrl + Alt + Plus/Equals");
                 show_row("Shrink Vertical Spacing", "Ctrl + Alt + Minus");
                 show_row("Reset Vertical Spacing", "Ctrl + Alt + 0");
