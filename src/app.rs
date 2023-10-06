@@ -1732,8 +1732,8 @@ impl ProfApp {
             return;
         }
 
-        let duration: i64 = percent.apply_to(cx.view_interval.duration_ns());
-        let sign: i64 = match dir {
+        let duration = percent.apply_to(cx.view_interval.duration_ns());
+        let sign = match dir {
             PanDirection::Left => -1,
             PanDirection::Right => 1,
         };

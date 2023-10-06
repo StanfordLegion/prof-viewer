@@ -325,10 +325,10 @@ mod tests {
 
         #[test]
         fn test_translate_positive() {
-            let start: Timestamp = Timestamp::parse("234.5 ms").unwrap();
-            let end: Timestamp = Timestamp::parse("235.5 ms").unwrap();
-            let expected_start: Timestamp = Timestamp(start.0 + 250);
-            let expected_end: Timestamp = Timestamp(end.0 + 250);
+            let start = Timestamp::parse("234.5 ms").unwrap();
+            let end = Timestamp::parse("235.5 ms").unwrap();
+            let expected_start = Timestamp(start.0 + 250);
+            let expected_end = Timestamp(end.0 + 250);
             assert_eq!(
                 Interval::new(start, end).translate(250),
                 Interval::new(expected_start, expected_end)
@@ -337,10 +337,10 @@ mod tests {
 
         #[test]
         fn test_translate_negative() {
-            let start: Timestamp = Timestamp::parse("234.5 ms").unwrap();
-            let end: Timestamp = Timestamp::parse("235.5 ms").unwrap();
-            let expected_start: Timestamp = Timestamp(start.0 - 250);
-            let expected_end: Timestamp = Timestamp(end.0 - 250);
+            let start = Timestamp::parse("234.5 ms").unwrap();
+            let end = Timestamp::parse("235.5 ms").unwrap();
+            let expected_start = Timestamp(start.0 - 250);
+            let expected_end = Timestamp(end.0 - 250);
             assert_eq!(
                 Interval::new(start, end).translate(-250),
                 Interval::new(expected_start, expected_end)
