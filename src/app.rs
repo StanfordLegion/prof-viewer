@@ -159,9 +159,16 @@ struct Window {
     config: Config,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+enum IntervalOrigin {
+    Zoom,
+    Pan,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-struct ZoomState {
+struct IntervalState {
     levels: Vec<Interval>,
+    origins: Vec<IntervalOrigin>,
     index: usize,
 }
 
@@ -244,7 +251,7 @@ struct Context {
     show_controls: bool,
 
     #[serde(skip)]
-    view_interval_history: ZoomState,
+    view_interval_history: IntervalState,
     #[serde(skip)]
     interval_select_state: IntervalSelectState,
 }
@@ -1727,6 +1734,27 @@ impl ProfApp {
         cx.interval_select_state.stop_error = None;
     }
 
+    fn update_view_interval(cx: &mut Context, interval: Interval, origin: IntervalOrigin) {
+        cx.view_interval = interval;
+
+        let history = &mut cx.view_interval_history;
+        let index = history.index;
+
+        // Only keep at most one Pan origin in a row
+        if history.levels.len() > 0 {
+            if history.origins[index] == origin && origin == IntervalOrigin::Pan {
+                history.levels.truncate(index);
+                history.origins.truncate(index);
+            }
+        }
+
+        history.levels.truncate(index + 1);
+        history.levels.push(interval);
+        history.origins.truncate(index + 1);
+        history.origins.push(origin);
+        history.index = history.levels.len() - 1;
+    }
+
     fn pan(cx: &mut Context, percent: PercentageInteger, dir: PanDirection) {
         if percent.value() == 0 {
             return;
@@ -1737,7 +1765,9 @@ impl ProfApp {
             PanDirection::Left => -1,
             PanDirection::Right => 1,
         };
-        cx.view_interval = cx.view_interval.translate(duration * sign);
+        let interval = cx.view_interval.translate(duration * sign);
+
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
         ProfApp::update_interval_select_state(cx);
     }
 
@@ -1746,16 +1776,11 @@ impl ProfApp {
             return;
         }
 
-        cx.view_interval = interval;
-        cx.view_interval_history
-            .levels
-            .truncate(cx.view_interval_history.index + 1);
-        cx.view_interval_history.levels.push(cx.view_interval);
-        cx.view_interval_history.index = cx.view_interval_history.levels.len() - 1;
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Zoom);
         ProfApp::update_interval_select_state(cx);
     }
 
-    fn undo_zoom(cx: &mut Context) {
+    fn undo_pan_zoom(cx: &mut Context) {
         if cx.view_interval_history.index == 0 {
             return;
         }
@@ -1764,7 +1789,7 @@ impl ProfApp {
         ProfApp::update_interval_select_state(cx);
     }
 
-    fn redo_zoom(cx: &mut Context) {
+    fn redo_pan_zoom(cx: &mut Context) {
         if cx.view_interval_history.index + 1 >= cx.view_interval_history.levels.len() {
             return;
         }
@@ -1859,8 +1884,8 @@ impl ProfApp {
         match action {
             Actions::ZoomIn => ProfApp::zoom_in(cx),
             Actions::ZoomOut => ProfApp::zoom_out(cx),
-            Actions::UndoZoom => ProfApp::undo_zoom(cx),
-            Actions::RedoZoom => ProfApp::redo_zoom(cx),
+            Actions::UndoZoom => ProfApp::undo_pan_zoom(cx),
+            Actions::RedoZoom => ProfApp::redo_pan_zoom(cx),
             Actions::ResetZoom => ProfApp::zoom(cx, cx.total_interval),
             Actions::Pan(percent, dir) => ProfApp::pan(cx, percent, dir),
             Actions::ExpandVertical => ProfApp::multiply_scale_factor(cx, 2.0),
