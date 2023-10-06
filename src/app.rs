@@ -1741,11 +1741,12 @@ impl ProfApp {
         let index = history.index;
 
         // Only keep at most one Pan origin in a row
-        if history.levels.len() > 0 {
-            if history.origins[index] == origin && origin == IntervalOrigin::Pan {
-                history.levels.truncate(index);
-                history.origins.truncate(index);
-            }
+        if !history.levels.is_empty()
+            && history.origins[index] == IntervalOrigin::Pan
+            && origin == IntervalOrigin::Pan
+        {
+            history.levels.truncate(index);
+            history.origins.truncate(index);
         }
 
         history.levels.truncate(index + 1);
