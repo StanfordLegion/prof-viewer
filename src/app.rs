@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::path::Path;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -2443,8 +2444,28 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
     env_logger::try_init().unwrap_or(()); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions::default();
+
+    let mut paths = BTreeSet::new();
+    let arguments: Vec<String> = std::env::args().collect();
+    for argument in &arguments[1..] {
+        if !argument.starts_with("--") {
+            let path = Path::new(&argument)
+                .parent()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            paths.insert(path);
+        }
+    }
+    let app_name = if paths.len() == 1 {
+        paths.pop_last().unwrap()
+    } else {
+        String::from("Legion Prof")
+    };
+
     eframe::run_native(
-        "Legion Prof",
+        &app_name,
         native_options,
         Box::new(|cc| Box::new(ProfApp::new(cc, data_sources))),
     )
