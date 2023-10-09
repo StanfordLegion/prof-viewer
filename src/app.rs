@@ -1193,7 +1193,7 @@ impl SearchState {
         if !self.result_cache.contains_key(entry.entry_id()) {
             self.result_cache
                 .entry(entry.entry_id().clone())
-                .or_insert_with(BTreeMap::new);
+                .or_default();
         }
 
         // Always recurse into tiles, because results can be fetched
@@ -1215,7 +1215,7 @@ impl SearchState {
             .and_modify(|_| {
                 result = false;
             })
-            .or_insert_with(BTreeMap::new);
+            .or_default();
         result
     }
 
@@ -1251,13 +1251,8 @@ impl SearchState {
             let level1_index = entry_id.slot_index(1).unwrap();
             let level2_index = entry_id.slot_index(2).unwrap();
 
-            let level0_subtree = self
-                .entry_tree
-                .entry(level0_index)
-                .or_insert_with(BTreeMap::new);
-            let level1_subtree = level0_subtree
-                .entry(level1_index)
-                .or_insert_with(BTreeSet::new);
+            let level0_subtree = self.entry_tree.entry(level0_index).or_default();
+            let level1_subtree = level0_subtree.entry(level1_index).or_default();
             level1_subtree.insert(level2_index);
         }
     }
