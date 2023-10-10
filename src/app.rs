@@ -1192,7 +1192,7 @@ impl SearchState {
         if !self.result_cache.contains_key(entry.entry_id()) {
             self.result_cache
                 .entry(entry.entry_id().clone())
-                .or_insert_with(BTreeMap::new);
+                .or_default();
         }
 
         // Always recurse into tiles, because results can be fetched
@@ -1214,7 +1214,7 @@ impl SearchState {
             .and_modify(|_| {
                 result = false;
             })
-            .or_insert_with(BTreeMap::new);
+            .or_default();
         result
     }
 
@@ -1250,13 +1250,8 @@ impl SearchState {
             let level1_index = entry_id.slot_index(1).unwrap();
             let level2_index = entry_id.slot_index(2).unwrap();
 
-            let level0_subtree = self
-                .entry_tree
-                .entry(level0_index)
-                .or_insert_with(BTreeMap::new);
-            let level1_subtree = level0_subtree
-                .entry(level1_index)
-                .or_insert_with(BTreeSet::new);
+            let level0_subtree = self.entry_tree.entry(level0_index).or_default();
+            let level1_subtree = level0_subtree.entry(level1_index).or_default();
             level1_subtree.insert(level2_index);
         }
     }
@@ -1771,7 +1766,15 @@ impl ProfApp {
         cx.scale_factor = 1.0;
     }
 
-    fn keyboard(ctx: &egui::Context, cx: &mut Context) {
+    fn reset_ui(cx: &mut Context, windows: &mut [Window]) {
+        cx.show_controls = false;
+        for window in windows.iter_mut() {
+            window.config.kind_filter.clear();
+            window.config.items_selected.clear();
+        }
+    }
+
+    fn keyboard(ctx: &egui::Context, cx: &mut Context, windows: &mut [Window]) {
         // Focus is elsewhere, don't check any keys
         if ctx.memory(|m| m.focus().is_some()) {
             return;
@@ -1787,6 +1790,7 @@ impl ProfApp {
             ShrinkVertical,
             ResetVertical,
             ToggleControls,
+            ResetUI,
             NoAction,
         }
         let action = ctx.input(|i| {
@@ -1816,6 +1820,8 @@ impl ProfApp {
                 }
             } else if i.key_pressed(egui::Key::H) {
                 Actions::ToggleControls
+            } else if i.key_pressed(egui::Key::Escape) {
+                Actions::ResetUI
             } else {
                 Actions::NoAction
             }
@@ -1830,6 +1836,7 @@ impl ProfApp {
             Actions::ShrinkVertical => ProfApp::multiply_scale_factor(cx, 0.5),
             Actions::ResetVertical => ProfApp::reset_scale_factor(cx),
             Actions::ToggleControls => cx.show_controls = !cx.show_controls,
+            Actions::ResetUI => ProfApp::reset_ui(cx, windows),
             Actions::NoAction => {}
         }
     }
@@ -2351,7 +2358,7 @@ impl eframe::App for ProfApp {
             }
         }
 
-        Self::keyboard(ctx, cx);
+        Self::keyboard(ctx, cx, windows);
 
         // Keep repainting as long as we have outstanding requests.
         if !pending_data_sources.is_empty()
