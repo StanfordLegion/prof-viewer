@@ -9,6 +9,7 @@ use egui::{
 };
 use egui_extras::{Column, TableBuilder};
 use percentage::{Percentage, PercentageInteger};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
@@ -111,6 +112,8 @@ struct SearchState {
     query: String,
     last_query: String,
     include_collapsed_entries: bool,
+    whole_word: bool,
+    last_whole_word: bool,
     last_include_collapsed_entries: bool,
     search_field: FieldID,
     last_search_field: FieldID,
@@ -1112,6 +1115,8 @@ impl SearchState {
             query: "".to_owned(),
             last_query: "".to_owned(),
             include_collapsed_entries: false,
+            whole_word: false,
+            last_whole_word: false,
             last_include_collapsed_entries: false,
             search_field: title_id,
             last_search_field: title_id,
@@ -1144,6 +1149,12 @@ impl SearchState {
             self.last_search_field = self.search_field;
         }
 
+        // Invalidate when the whole word setting changes.
+        if self.whole_word != self.last_whole_word {
+            invalidate = true;
+            self.last_whole_word = self.whole_word;
+        }
+
         // Invalidate when EXCLUDING collapsed entries. (I.e., because the
         // searched set shrinks. Growing is ok because search is monotonic.)
         if self.include_collapsed_entries != self.last_include_collapsed_entries
@@ -1165,7 +1176,12 @@ impl SearchState {
     }
 
     fn is_string_match(&self, s: &str) -> bool {
-        s.contains(&self.query)
+        match self.whole_word {
+            true => Regex::new(format!("\\b{}\\b", self.query).as_str())
+                .unwrap()
+                .is_match(s),
+            false => s.contains(&self.query),
+        }
     }
 
     fn is_field_match(&self, field: &Field) -> bool {
@@ -1180,7 +1196,7 @@ impl SearchState {
     fn is_match(&self, item: &ItemMeta) -> bool {
         let field = self.search_field;
         if field == self.title_field {
-            item.title.contains(&self.query)
+            self.is_string_match(&item.title)
         } else if let Some((_, value)) = item.fields.iter().find(|(x, _)| *x == field) {
             self.is_field_match(value)
         } else {
@@ -1583,6 +1599,10 @@ impl Window {
                     }
                 });
         });
+        ui.checkbox(
+            &mut self.config.search_state.whole_word,
+            "whole-word matches only",
+        );
         ui.checkbox(
             &mut self.config.search_state.include_collapsed_entries,
             "Include collapsed processors",
