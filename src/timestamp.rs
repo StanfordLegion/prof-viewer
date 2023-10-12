@@ -164,148 +164,187 @@ impl Interval {
             stop: Timestamp(self.stop.0 + duration_ns),
         }
     }
+    // Translate interval by duration_ns on both sides.
+    pub fn translate(self, duration_ns: i64) -> Self {
+        Self {
+            start: Timestamp(self.start.0 + duration_ns),
+            stop: Timestamp(self.stop.0 + duration_ns),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_s() {
-        assert_eq!(Timestamp::parse("123.4 s"), Ok(Timestamp(123_400_000_000)));
+    mod timestamp {
+        use super::*;
+
+        #[test]
+        fn test_s() {
+            assert_eq!(Timestamp::parse("123.4 s"), Ok(Timestamp(123_400_000_000)));
+        }
+
+        #[test]
+        fn test_ms() {
+            assert_eq!(Timestamp::parse("234.5 ms"), Ok(Timestamp(234_500_000)));
+        }
+
+        #[test]
+        fn test_us() {
+            assert_eq!(Timestamp::parse("345.6 us"), Ok(Timestamp(345_600)));
+        }
+
+        #[test]
+        fn test_ns() {
+            assert_eq!(Timestamp::parse("567.0 ns"), Ok(Timestamp(567)));
+        }
+
+        #[test]
+        fn test_s_upper() {
+            assert_eq!(Timestamp::parse("123.4 S"), Ok(Timestamp(123_400_000_000)));
+        }
+
+        #[test]
+        fn test_ms_upper() {
+            assert_eq!(Timestamp::parse("234.5 MS"), Ok(Timestamp(234_500_000)));
+        }
+
+        #[test]
+        fn test_us_upper() {
+            assert_eq!(Timestamp::parse("345.6 US"), Ok(Timestamp(345_600)));
+        }
+
+        #[test]
+        fn test_ns_upper() {
+            assert_eq!(Timestamp::parse("567.0 NS"), Ok(Timestamp(567)));
+        }
+
+        #[test]
+        fn test_s_nospace() {
+            assert_eq!(Timestamp::parse("123.4s"), Ok(Timestamp(123_400_000_000)));
+        }
+
+        #[test]
+        fn test_ms_nospace() {
+            assert_eq!(Timestamp::parse("234.5ms"), Ok(Timestamp(234_500_000)));
+        }
+
+        #[test]
+        fn test_us_nospace() {
+            assert_eq!(Timestamp::parse("345.6us"), Ok(Timestamp(345_600)));
+        }
+
+        #[test]
+        fn test_ns_nospace() {
+            assert_eq!(Timestamp::parse("567.0ns"), Ok(Timestamp(567)));
+        }
+
+        #[test]
+        fn test_s_spaces() {
+            assert_eq!(
+                Timestamp::parse("  123.4  s  "),
+                Ok(Timestamp(123_400_000_000))
+            );
+        }
+
+        #[test]
+        fn test_ms_spaces() {
+            assert_eq!(
+                Timestamp::parse("  234.5  ms  "),
+                Ok(Timestamp(234_500_000))
+            );
+        }
+
+        #[test]
+        fn test_us_spaces() {
+            assert_eq!(Timestamp::parse("  345.6  us  "), Ok(Timestamp(345_600)));
+        }
+
+        #[test]
+        fn test_ns_spaces() {
+            assert_eq!(Timestamp::parse("  567.0  ns  "), Ok(Timestamp(567)));
+        }
+
+        #[test]
+        fn test_no_unit() {
+            assert_eq!(Timestamp::parse("500.0"), Err(TimestampParseError::NoUnit));
+        }
+
+        #[test]
+        fn test_no_value() {
+            assert_eq!(
+                Timestamp::parse("ms"),
+                Err(TimestampParseError::InvalidValue)
+            );
+        }
+
+        #[test]
+        fn test_invalid_unit() {
+            assert_eq!(
+                Timestamp::parse("500.0 foo"),
+                Err(TimestampParseError::InvalidUnit)
+            );
+        }
+
+        #[test]
+        fn test_invalid_value() {
+            assert_eq!(
+                Timestamp::parse("foo ms"),
+                Err(TimestampParseError::InvalidValue)
+            );
+        }
+
+        #[test]
+        fn test_invalid_value2() {
+            assert_eq!(
+                Timestamp::parse("500.0.0 ms"),
+                Err(TimestampParseError::InvalidValue)
+            );
+        }
+
+        #[test]
+        fn test_invalid_value3() {
+            assert_eq!(
+                Timestamp::parse("500.0.0"),
+                Err(TimestampParseError::NoUnit)
+            );
+        }
+
+        #[test]
+        fn test_extra() {
+            assert_eq!(
+                Timestamp::parse("500.0 ms asdfadf"),
+                Err(TimestampParseError::InvalidUnit)
+            );
+        }
     }
 
-    #[test]
-    fn test_ms() {
-        assert_eq!(Timestamp::parse("234.5 ms"), Ok(Timestamp(234_500_000)));
-    }
+    mod interval {
+        use super::*;
 
-    #[test]
-    fn test_us() {
-        assert_eq!(Timestamp::parse("345.6 us"), Ok(Timestamp(345_600)));
-    }
+        #[test]
+        fn test_translate_positive() {
+            let start = Timestamp::parse("234.5 ms").unwrap();
+            let end = Timestamp::parse("235.5 ms").unwrap();
+            let expected_start = Timestamp(start.0 + 250);
+            let expected_end = Timestamp(end.0 + 250);
+            assert_eq!(
+                Interval::new(start, end).translate(250),
+                Interval::new(expected_start, expected_end)
+            )
+        }
 
-    #[test]
-    fn test_ns() {
-        assert_eq!(Timestamp::parse("567.0 ns"), Ok(Timestamp(567)));
-    }
-
-    #[test]
-    fn test_s_upper() {
-        assert_eq!(Timestamp::parse("123.4 S"), Ok(Timestamp(123_400_000_000)));
-    }
-
-    #[test]
-    fn test_ms_upper() {
-        assert_eq!(Timestamp::parse("234.5 MS"), Ok(Timestamp(234_500_000)));
-    }
-
-    #[test]
-    fn test_us_upper() {
-        assert_eq!(Timestamp::parse("345.6 US"), Ok(Timestamp(345_600)));
-    }
-
-    #[test]
-    fn test_ns_upper() {
-        assert_eq!(Timestamp::parse("567.0 NS"), Ok(Timestamp(567)));
-    }
-
-    #[test]
-    fn test_s_nospace() {
-        assert_eq!(Timestamp::parse("123.4s"), Ok(Timestamp(123_400_000_000)));
-    }
-
-    #[test]
-    fn test_ms_nospace() {
-        assert_eq!(Timestamp::parse("234.5ms"), Ok(Timestamp(234_500_000)));
-    }
-
-    #[test]
-    fn test_us_nospace() {
-        assert_eq!(Timestamp::parse("345.6us"), Ok(Timestamp(345_600)));
-    }
-
-    #[test]
-    fn test_ns_nospace() {
-        assert_eq!(Timestamp::parse("567.0ns"), Ok(Timestamp(567)));
-    }
-
-    #[test]
-    fn test_s_spaces() {
-        assert_eq!(
-            Timestamp::parse("  123.4  s  "),
-            Ok(Timestamp(123_400_000_000))
-        );
-    }
-
-    #[test]
-    fn test_ms_spaces() {
-        assert_eq!(
-            Timestamp::parse("  234.5  ms  "),
-            Ok(Timestamp(234_500_000))
-        );
-    }
-
-    #[test]
-    fn test_us_spaces() {
-        assert_eq!(Timestamp::parse("  345.6  us  "), Ok(Timestamp(345_600)));
-    }
-
-    #[test]
-    fn test_ns_spaces() {
-        assert_eq!(Timestamp::parse("  567.0  ns  "), Ok(Timestamp(567)));
-    }
-
-    #[test]
-    fn test_no_unit() {
-        assert_eq!(Timestamp::parse("500.0"), Err(TimestampParseError::NoUnit));
-    }
-
-    #[test]
-    fn test_no_value() {
-        assert_eq!(
-            Timestamp::parse("ms"),
-            Err(TimestampParseError::InvalidValue)
-        );
-    }
-
-    #[test]
-    fn test_invalid_unit() {
-        assert_eq!(
-            Timestamp::parse("500.0 foo"),
-            Err(TimestampParseError::InvalidUnit)
-        );
-    }
-
-    #[test]
-    fn test_invalid_value() {
-        assert_eq!(
-            Timestamp::parse("foo ms"),
-            Err(TimestampParseError::InvalidValue)
-        );
-    }
-
-    #[test]
-    fn test_invalid_value2() {
-        assert_eq!(
-            Timestamp::parse("500.0.0 ms"),
-            Err(TimestampParseError::InvalidValue)
-        );
-    }
-
-    #[test]
-    fn test_invalid_value3() {
-        assert_eq!(
-            Timestamp::parse("500.0.0"),
-            Err(TimestampParseError::NoUnit)
-        );
-    }
-
-    #[test]
-    fn test_extra() {
-        assert_eq!(
-            Timestamp::parse("500.0 ms asdfadf"),
-            Err(TimestampParseError::InvalidUnit)
-        );
+        #[test]
+        fn test_translate_negative() {
+            let start = Timestamp::parse("234.5 ms").unwrap();
+            let end = Timestamp::parse("235.5 ms").unwrap();
+            let expected_start = Timestamp(start.0 - 250);
+            let expected_end = Timestamp(end.0 - 250);
+            assert_eq!(
+                Interval::new(start, end).translate(-250),
+                Interval::new(expected_start, expected_end)
+            )
+        }
     }
 }

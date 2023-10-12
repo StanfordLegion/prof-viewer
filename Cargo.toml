@@ -11,6 +11,7 @@ client = ["dep:reqwest", "dep:url"]
 server = ["dep:actix-cors", "dep:actix-web"]
 
 [dependencies]
+percentage = "0.1.0"
 egui = "0.22.0"
 egui_extras = "0.22.0"
 eframe = { version = "0.22.0", default-features = false, features = [

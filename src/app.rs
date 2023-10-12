@@ -8,6 +8,7 @@ use egui::{
     Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
+use percentage::{Percentage, PercentageInteger};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
@@ -158,9 +159,16 @@ struct Window {
     config: Config,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+enum IntervalOrigin {
+    Zoom,
+    Pan,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-struct ZoomState {
+struct IntervalState {
     levels: Vec<Interval>,
+    origins: Vec<IntervalOrigin>,
     index: usize,
 }
 
@@ -243,9 +251,9 @@ struct Context {
     show_controls: bool,
 
     #[serde(skip)]
-    zoom_state: ZoomState,
+    view_interval_history: IntervalState,
     #[serde(skip)]
-    interval_state: IntervalSelectState,
+    interval_select_state: IntervalSelectState,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -1444,62 +1452,65 @@ impl Window {
         let start_res = ui
             .horizontal(|ui| {
                 ui.label("Start:");
-                ui.text_edit_singleline(&mut cx.interval_state.start_buffer)
+                ui.text_edit_singleline(&mut cx.interval_select_state.start_buffer)
             })
             .inner;
 
-        if let Some(error) = cx.interval_state.start_error {
+        if let Some(error) = cx.interval_select_state.start_error {
             ui.label(RichText::new(error.to_string()).color(Color32::RED));
         }
 
         let stop_res = ui
             .horizontal(|ui| {
                 ui.label("Stop:");
-                ui.text_edit_singleline(&mut cx.interval_state.stop_buffer)
+                ui.text_edit_singleline(&mut cx.interval_select_state.stop_buffer)
             })
             .inner;
 
-        if let Some(error) = cx.interval_state.stop_error {
+        if let Some(error) = cx.interval_select_state.stop_error {
             ui.label(RichText::new(error.to_string()).color(Color32::RED));
         }
 
         if start_res.lost_focus()
-            && cx.interval_state.start_buffer != cx.view_interval.start.to_string()
+            && cx.interval_select_state.start_buffer != cx.view_interval.start.to_string()
         {
-            match Timestamp::parse(&cx.interval_state.start_buffer) {
+            match Timestamp::parse(&cx.interval_select_state.start_buffer) {
                 Ok(start) => {
                     // validate timestamp
                     if start > cx.view_interval.stop {
-                        cx.interval_state.start_error = Some(IntervalSelectError::StartAfterStop);
+                        cx.interval_select_state.start_error =
+                            Some(IntervalSelectError::StartAfterStop);
                         return;
                     }
                     if start > cx.total_interval.stop {
-                        cx.interval_state.start_error = Some(IntervalSelectError::StartAfterEnd);
+                        cx.interval_select_state.start_error =
+                            Some(IntervalSelectError::StartAfterEnd);
                         return;
                     }
                     let target = Interval::new(start, cx.view_interval.stop);
                     ProfApp::zoom(cx, target);
                 }
                 Err(e) => {
-                    cx.interval_state.start_error = Some(e.into());
+                    cx.interval_select_state.start_error = Some(e.into());
                 }
             }
         }
         if stop_res.lost_focus()
-            && cx.interval_state.stop_buffer != cx.view_interval.stop.to_string()
+            && cx.interval_select_state.stop_buffer != cx.view_interval.stop.to_string()
         {
-            match Timestamp::parse(&cx.interval_state.stop_buffer) {
+            match Timestamp::parse(&cx.interval_select_state.stop_buffer) {
                 Ok(stop) => {
                     // validate timestamp
                     if stop < cx.view_interval.start {
-                        cx.interval_state.stop_error = Some(IntervalSelectError::StopBeforeStart);
+                        cx.interval_select_state.stop_error =
+                            Some(IntervalSelectError::StopBeforeStart);
                         return;
                     }
                     let target = Interval::new(cx.view_interval.start, stop);
                     ProfApp::zoom(cx, target);
                 }
                 Err(e) => {
-                    cx.interval_state.stop_error = Some(e.into());
+                    cx.interval_select_state.stop_error = Some(e.into());
                 }
             }
         }
@@ -1664,6 +1675,11 @@ impl Window {
     }
 }
 
+enum PanDirection {
+    Left,
+    Right,
+}
+
 impl ProfApp {
     /// Called once before the first frame.
     pub fn new(
@@ -1706,43 +1722,76 @@ impl ProfApp {
         result
     }
 
+    fn update_interval_select_state(cx: &mut Context) {
+        cx.interval_select_state.start_buffer = cx.view_interval.start.to_string();
+        cx.interval_select_state.stop_buffer = cx.view_interval.stop.to_string();
+        cx.interval_select_state.start_error = None;
+        cx.interval_select_state.stop_error = None;
+    }
+
+    fn update_view_interval(cx: &mut Context, interval: Interval, origin: IntervalOrigin) {
+        cx.view_interval = interval;
+
+        let history = &mut cx.view_interval_history;
+        let index = history.index;
+
+        // Only keep at most one Pan origin in a row
+        if !history.levels.is_empty()
+            && history.origins[index] == IntervalOrigin::Pan
+            && origin == IntervalOrigin::Pan
+        {
+            history.levels.truncate(index);
+            history.origins.truncate(index);
+        }
+
+        history.levels.truncate(index + 1);
+        history.levels.push(interval);
+        history.origins.truncate(index + 1);
+        history.origins.push(origin);
+        history.index = history.levels.len() - 1;
+    }
+
+    fn pan(cx: &mut Context, percent: PercentageInteger, dir: PanDirection) {
+        if percent.value() == 0 {
+            return;
+        }
+
+        let duration = percent.apply_to(cx.view_interval.duration_ns());
+        let sign = match dir {
+            PanDirection::Left => -1,
+            PanDirection::Right => 1,
+        };
+        let interval = cx.view_interval.translate(duration * sign);
+
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
+        ProfApp::update_interval_select_state(cx);
+    }
+
     fn zoom(cx: &mut Context, interval: Interval) {
         if cx.view_interval == interval {
             return;
         }
 
-        cx.view_interval = interval;
-        cx.zoom_state.levels.truncate(cx.zoom_state.index + 1);
-        cx.zoom_state.levels.push(cx.view_interval);
-        cx.zoom_state.index = cx.zoom_state.levels.len() - 1;
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Zoom);
+        ProfApp::update_interval_select_state(cx);
     }
 
-    fn undo_zoom(cx: &mut Context) {
-        if cx.zoom_state.index == 0 {
+    fn undo_pan_zoom(cx: &mut Context) {
+        if cx.view_interval_history.index == 0 {
             return;
         }
-        cx.zoom_state.index -= 1;
-        cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        cx.view_interval_history.index -= 1;
+        cx.view_interval = cx.view_interval_history.levels[cx.view_interval_history.index];
+        ProfApp::update_interval_select_state(cx);
     }
 
-    fn redo_zoom(cx: &mut Context) {
-        if cx.zoom_state.index + 1 >= cx.zoom_state.levels.len() {
+    fn redo_pan_zoom(cx: &mut Context) {
+        if cx.view_interval_history.index + 1 >= cx.view_interval_history.levels.len() {
             return;
         }
-        cx.zoom_state.index += 1;
-        cx.view_interval = cx.zoom_state.levels[cx.zoom_state.index];
-        cx.interval_state.start_buffer = cx.view_interval.start.to_string();
-        cx.interval_state.stop_buffer = cx.view_interval.stop.to_string();
-        cx.interval_state.start_error = None;
-        cx.interval_state.stop_error = None;
+        cx.view_interval_history.index += 1;
+        cx.view_interval = cx.view_interval_history.levels[cx.view_interval_history.index];
+        ProfApp::update_interval_select_state(cx);
     }
 
     fn zoom_in(cx: &mut Context) {
@@ -1785,6 +1834,7 @@ impl ProfApp {
             UndoZoom,
             RedoZoom,
             ResetZoom,
+            Pan(PercentageInteger, PanDirection),
             ExpandVertical,
             ShrinkVertical,
             ResetVertical,
@@ -1817,10 +1867,22 @@ impl ProfApp {
                 } else {
                     Actions::NoAction
                 }
+            } else if i.modifiers.shift {
+                if i.key_pressed(egui::Key::ArrowLeft) {
+                    Actions::Pan(Percentage::from(1), PanDirection::Left)
+                } else if i.key_pressed(egui::Key::ArrowRight) {
+                    Actions::Pan(Percentage::from(1), PanDirection::Right)
+                } else {
+                    Actions::NoAction
+                }
             } else if i.key_pressed(egui::Key::H) {
                 Actions::ToggleControls
             } else if i.key_pressed(egui::Key::Escape) {
                 Actions::ResetUI
+            } else if i.key_pressed(egui::Key::ArrowLeft) {
+                Actions::Pan(Percentage::from(5), PanDirection::Left)
+            } else if i.key_pressed(egui::Key::ArrowRight) {
+                Actions::Pan(Percentage::from(5), PanDirection::Right)
             } else {
                 Actions::NoAction
             }
@@ -1828,9 +1890,10 @@ impl ProfApp {
         match action {
             Actions::ZoomIn => ProfApp::zoom_in(cx),
             Actions::ZoomOut => ProfApp::zoom_out(cx),
-            Actions::UndoZoom => ProfApp::undo_zoom(cx),
-            Actions::RedoZoom => ProfApp::redo_zoom(cx),
+            Actions::UndoZoom => ProfApp::undo_pan_zoom(cx),
+            Actions::RedoZoom => ProfApp::redo_pan_zoom(cx),
             Actions::ResetZoom => ProfApp::zoom(cx, cx.total_interval),
+            Actions::Pan(percent, dir) => ProfApp::pan(cx, percent, dir),
             Actions::ExpandVertical => ProfApp::multiply_scale_factor(cx, 2.0),
             Actions::ShrinkVertical => ProfApp::multiply_scale_factor(cx, 0.5),
             Actions::ResetVertical => ProfApp::reset_scale_factor(cx),
@@ -1972,11 +2035,13 @@ impl ProfApp {
                     });
                 };
                 show_row("Zoom to Interval", "Click and Drag");
+                show_row("Pan 5%", "Left/Right Arrow");
+                show_row("Pan 1%", "Shift + Left/Right Arrow");
                 show_row("Zoom In", "Ctrl + Plus/Equals");
                 show_row("Zoom Out", "Ctrl + Minus");
-                show_row("Undo Zoom", "Ctrl + Left Arrow");
-                show_row("Redo Zoom", "Ctrl + Right Arrow");
-                show_row("Reset Zoom", "Ctrl + 0");
+                show_row("Undo Pan/Zoom", "Ctrl + Left Arrow");
+                show_row("Redo Pan/Zoom", "Ctrl + Right Arrow");
+                show_row("Reset Pan/Zoom", "Ctrl + 0");
                 show_row("Expand Vertical Spacing", "Ctrl + Alt + Plus/Equals");
                 show_row("Shrink Vertical Spacing", "Ctrl + Alt + Minus");
                 show_row("Reset Vertical Spacing", "Ctrl + Alt + 0");
