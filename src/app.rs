@@ -1769,7 +1769,6 @@ impl ProfApp {
     fn reset_ui(cx: &mut Context, windows: &mut [Window]) {
         cx.show_controls = false;
         for window in windows.iter_mut() {
-            window.config.kind_filter.clear();
             window.config.items_selected.clear();
         }
     }
