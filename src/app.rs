@@ -9,7 +9,7 @@ use egui::{
 };
 use egui_extras::{Column, TableBuilder};
 use percentage::{Percentage, PercentageInteger};
-use regex::{Regex, escape};
+use regex::{escape, Regex};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
