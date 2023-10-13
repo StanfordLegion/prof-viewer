@@ -9,7 +9,7 @@ use egui::{
 };
 use egui_extras::{Column, TableBuilder};
 use percentage::{Percentage, PercentageInteger};
-use regex::Regex;
+use regex::{Regex, escape};
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
@@ -1177,7 +1177,7 @@ impl SearchState {
 
     fn is_string_match(&self, s: &str) -> bool {
         if self.whole_word {
-            Regex::new(format!("\\b{}\\b", self.query).as_str())
+            Regex::new(format!("\\b{}\\b", escape(&self.query)).as_str())
                 .unwrap()
                 .is_match(s)
         } else {
