@@ -111,6 +111,7 @@ struct SearchState {
     // Search parameters
     query: String,
     last_query: String,
+    last_word_regex: Option<Regex>,
     include_collapsed_entries: bool,
     whole_word: bool,
     last_whole_word: bool,
@@ -1114,6 +1115,7 @@ impl SearchState {
 
             query: "".to_owned(),
             last_query: "".to_owned(),
+            last_word_regex: None,
             include_collapsed_entries: false,
             whole_word: false,
             last_whole_word: false,
@@ -1141,6 +1143,10 @@ impl SearchState {
         if self.query != self.last_query {
             invalidate = true;
             self.last_query = self.query.clone();
+            if self.whole_word {
+                let regex_string = format!("\\b{}\\b", escape(&self.query));
+                self.last_word_regex = Some(Regex::new(regex_string.as_str()).unwrap());
+            }
         }
 
         // Invalidate when the search field changes.
@@ -1153,6 +1159,10 @@ impl SearchState {
         if self.whole_word != self.last_whole_word {
             invalidate = true;
             self.last_whole_word = self.whole_word;
+            if self.whole_word {
+                let regex_string = format!("\\b{}\\b", escape(&self.query));
+                self.last_word_regex = Some(Regex::new(regex_string.as_str()).unwrap());
+            }
         }
 
         // Invalidate when EXCLUDING collapsed entries. (I.e., because the
@@ -1177,9 +1187,10 @@ impl SearchState {
 
     fn is_string_match(&self, s: &str) -> bool {
         if self.whole_word {
-            Regex::new(format!("\\b{}\\b", escape(&self.query)).as_str())
-                .unwrap()
-                .is_match(s)
+            match &self.last_word_regex {
+                Some(regex) => regex.is_match(s),
+                _ => false,
+            }
         } else {
             s.contains(&self.query)
         }
