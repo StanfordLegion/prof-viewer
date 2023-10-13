@@ -11,7 +11,6 @@ client = ["dep:reqwest", "dep:url"]
 server = ["dep:actix-cors", "dep:actix-web"]
 
 [dependencies]
-regex = "1.10.0"
 percentage = "0.1.0"
 egui = "0.22.0"
 egui_extras = "0.22.0"
@@ -32,6 +31,8 @@ bytes = "1" # for reqwest binary data
 rand = { version = "0.8" }
 # transitive depedency, required for rand to support wasm
 getrandom = { version = "0.2", features = ["js"] }
+
+regex = "1.10.0"
 
 
 # client
