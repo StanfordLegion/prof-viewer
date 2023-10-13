@@ -1602,7 +1602,7 @@ impl Window {
         });
         ui.checkbox(
             &mut self.config.search_state.whole_word,
-            "whole-word matches only",
+            "Match whole words only",
         );
         ui.checkbox(
             &mut self.config.search_state.include_collapsed_entries,
