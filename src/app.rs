@@ -1176,11 +1176,12 @@ impl SearchState {
     }
 
     fn is_string_match(&self, s: &str) -> bool {
-        match self.whole_word {
-            true => Regex::new(format!("\\b{}\\b", self.query).as_str())
+        if self.whole_word {
+            Regex::new(format!("\\b{}\\b", self.query).as_str())
                 .unwrap()
-                .is_match(s),
-            false => s.contains(&self.query),
+                .is_match(s)
+        } else {
+            s.contains(&self.query)
         }
     }
 
