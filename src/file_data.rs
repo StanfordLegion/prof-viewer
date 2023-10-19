@@ -25,30 +25,26 @@ impl FileDataSource {
     {
         let f = File::open(path).expect("opening file failed");
         let f = zstd::Decoder::new(f).expect("zstd decompression failed");
-        let result = ciborium::from_reader(f).expect("cbor decoding failed");
-        result
+        ciborium::from_reader(f).expect("cbor decoding failed")
     }
 }
 
 impl DataSource for FileDataSource {
     fn fetch_info(&self) -> DataSourceInfo {
-        let mut path = self.basedir.clone();
-        path.push("info");
+        let path = self.basedir.join("info");
         self.read_file::<DataSourceInfo>(&path)
     }
 
     fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SummaryTile {
         let req = TileRequestRef { entry_id, tile_id };
-        let mut path = self.basedir.clone();
-        path.push("summary_tile");
+        let mut path = self.basedir.join("summary_tile");
         path.push(&req.to_slug());
         self.read_file::<SummaryTile>(&path)
     }
 
     fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTile {
         let req = TileRequestRef { entry_id, tile_id };
-        let mut path = self.basedir.clone();
-        path.push("slot_tile");
+        let mut path = self.basedir.join("slot_tile");
         path.push(&req.to_slug());
         self.read_file::<SlotTile>(&path)
     }
@@ -60,8 +56,7 @@ impl DataSource for FileDataSource {
         _full: bool,
     ) -> SlotMetaTile {
         let req = TileRequestRef { entry_id, tile_id };
-        let mut path = self.basedir.clone();
-        path.push("slot_meta_tile");
+        let mut path = self.basedir.join("slot_meta_tile");
         path.push(&req.to_slug());
         self.read_file::<SlotMetaTile>(&path)
     }
