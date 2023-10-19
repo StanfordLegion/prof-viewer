@@ -1187,10 +1187,10 @@ impl SearchState {
 
     fn is_string_match(&self, s: &str) -> bool {
         if self.whole_word {
-            match &self.last_word_regex {
-                Some(regex) => regex.is_match(s),
-                _ => false,
-            }
+            let Some(regex) = &self.last_word_regex else {
+                unreachable!();
+            };
+            regex.is_match(s)
         } else {
             s.contains(&self.query)
         }
