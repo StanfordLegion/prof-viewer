@@ -366,11 +366,18 @@ mod tests {
                 short_name: "F".to_string(),
                 long_name: "First".to_string(),
                 summary: None,
-                slots: vec![EntryInfo::Slot {
-                    short_name: "S1".to_string(),
-                    long_name: "Slot 1".to_string(),
-                    max_rows: 1,
-                }],
+                slots: vec![
+                    EntryInfo::Slot {
+                        short_name: "S1".to_string(),
+                        long_name: "Slot 1".to_string(),
+                        max_rows: 1,
+                    },
+                    EntryInfo::Slot {
+                        short_name: "S2".to_string(),
+                        long_name: "Slot 2".to_string(),
+                        max_rows: 1,
+                    },
+                ],
             },
             interval: Interval::new(Timestamp(0), Timestamp(1000)),
             tile_set: TileSet { tiles: Vec::new() },
@@ -382,8 +389,8 @@ mod tests {
                 long_name: "Second".to_string(),
                 summary: None,
                 slots: vec![EntryInfo::Slot {
-                    short_name: "S2".to_string(),
-                    long_name: "Slot 2".to_string(),
+                    short_name: "S3".to_string(),
+                    long_name: "Slot 3".to_string(),
                     max_rows: 2,
                 }],
             },
@@ -392,7 +399,12 @@ mod tests {
             field_schema: FieldSchema::new(),
         };
 
-        let merge = MergeDeferredDataSource::merge_infos(vec![first, second]);
+        let infos = vec![first, second];
+
+        let mapping = MergeDeferredDataSource::compute_mapping(&infos);
+        assert_eq!(mapping, vec![0, 2]);
+
+        let merge = MergeDeferredDataSource::merge_infos(infos);
 
         assert_eq!(merge.interval, Interval::new(Timestamp(0), Timestamp(2000)));
         assert!(merge.tile_set.tiles.is_empty());
@@ -410,7 +422,7 @@ mod tests {
         assert_eq!(short_name, "F");
         assert_eq!(long_name, "First");
         assert!(summary.is_none());
-        assert_eq!(slots.len(), 2);
+        assert_eq!(slots.len(), 3);
 
         let EntryInfo::Slot {
             short_name: slot0_short_name,
@@ -428,7 +440,16 @@ mod tests {
             panic!("unexpected variant result in slot 1");
         };
 
+        let EntryInfo::Slot {
+            short_name: slot2_short_name,
+            ..
+        } = &slots[2]
+        else {
+            panic!("unexpected variant result in slot 1");
+        };
+
         assert_eq!(slot0_short_name, "S1");
         assert_eq!(slot1_short_name, "S2");
+        assert_eq!(slot2_short_name, "S3");
     }
 }
