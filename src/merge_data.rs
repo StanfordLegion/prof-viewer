@@ -345,6 +345,7 @@ mod tests {
         else {
             panic!("unexpected variant result in slot 0");
         };
+        assert_eq!(slot0_short_name, "S1");
 
         let EntryInfo::Slot {
             short_name: slot1_short_name,
@@ -353,8 +354,6 @@ mod tests {
         else {
             panic!("unexpected variant result in slot 1");
         };
-
-        assert_eq!(slot0_short_name, "S1");
         assert_eq!(slot1_short_name, "S2");
     }
 
@@ -430,6 +429,7 @@ mod tests {
         else {
             panic!("unexpected variant result in slot 0");
         };
+        assert_eq!(slot0_short_name, "S1");
 
         let EntryInfo::Slot {
             short_name: slot1_short_name,
@@ -438,17 +438,15 @@ mod tests {
         else {
             panic!("unexpected variant result in slot 1");
         };
+        assert_eq!(slot1_short_name, "S2");
 
         let EntryInfo::Slot {
             short_name: slot2_short_name,
             ..
         } = &slots[2]
         else {
-            panic!("unexpected variant result in slot 1");
+            panic!("unexpected variant result in slot 2");
         };
-
-        assert_eq!(slot0_short_name, "S1");
-        assert_eq!(slot1_short_name, "S2");
         assert_eq!(slot2_short_name, "S3");
     }
 }
