@@ -270,7 +270,7 @@ impl RandomDataSource {
 impl DataSourceMut for RandomDataSource {
     fn fetch_description(&mut self) -> DataSourceDescription {
         DataSourceDescription {
-            source_locator: None,
+            source_locator: Some(String::from("Random Data Source")),
         }
     }
     fn fetch_info(&mut self) -> DataSourceInfo {
