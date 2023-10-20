@@ -1,8 +1,10 @@
 use crate::data::{
-    DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 
 pub trait DeferredDataSource {
+    fn fetch_description(&mut self);
+    fn get_description(&mut self) -> DataSourceDescription;
     fn fetch_info(&mut self);
     fn get_infos(&mut self) -> Vec<DataSourceInfo>;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
@@ -34,6 +36,14 @@ impl<T: DataSourceMut> DeferredDataSourceWrapper<T> {
 }
 
 impl<T: DataSourceMut> DeferredDataSource for DeferredDataSourceWrapper<T> {
+    fn fetch_description(&mut self) {
+
+    }
+
+    fn get_description(&mut self) -> DataSourceDescription {
+        self.data_source.fetch_description()
+    }
+
     fn fetch_info(&mut self) {
         self.infos.push(self.data_source.fetch_info());
     }
@@ -102,6 +112,17 @@ impl<T: DeferredDataSource> CountingDeferredDataSource<T> {
 }
 
 impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T> {
+    fn fetch_description(&mut self) {
+        self.start_request();
+        self.data_source.fetch_description()
+    }
+
+    fn get_description(&mut self) -> DataSourceDescription {
+        let result = self.data_source.get_description();
+        self.outstanding_requests -= 1;
+        result
+    }
+
     fn fetch_info(&mut self) {
         self.start_request();
         self.data_source.fetch_info()
@@ -145,6 +166,14 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
 }
 
 impl DeferredDataSource for Box<dyn DeferredDataSource> {
+    fn fetch_description(&mut self) {
+        self.as_mut().fetch_description()
+    }
+
+    fn get_description(&mut self) -> DataSourceDescription {
+        self.as_mut().get_description()
+    }
+
     fn fetch_info(&mut self) {
         self.as_mut().fetch_info()
     }

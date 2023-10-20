@@ -2539,12 +2539,21 @@ impl UiExtra for egui::Ui {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
+pub fn start(mut data_sources: Vec<Box<dyn DeferredDataSource>>) {
     env_logger::try_init().unwrap_or(()); // Log to stderr (if you run with `RUST_LOG=debug`).
+
+    let app_name = if data_sources.len() == 1 {
+        match data_sources[0].get_description().source_locator {
+            Some(source_locator) => source_locator,
+            _ => String::from("Legion Prof"),
+        }
+    } else {
+        String::from("Legion Prof")
+    };
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Legion Prof",
+        &app_name,
         native_options,
         Box::new(|cc| Box::new(ProfApp::new(cc, data_sources))),
     )

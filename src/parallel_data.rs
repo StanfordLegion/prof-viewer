@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::data::{
-    DataSource, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::DeferredDataSource;
 
@@ -26,6 +26,14 @@ impl<T: DataSource + Send + Sync + 'static> ParallelDeferredDataSource<T> {
 }
 
 impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDeferredDataSource<T> {
+    fn fetch_description(&mut self) {
+
+    }
+
+    fn get_description(&mut self) -> DataSourceDescription {
+        self.data_source.fetch_description()
+    }
+
     fn fetch_info(&mut self) {
         let data_source = self.data_source.clone();
         let infos = self.infos.clone();

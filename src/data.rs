@@ -206,7 +206,13 @@ pub struct SlotMetaTile {
     pub data: SlotMetaTileData,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DataSourceDescription {
+    pub source_locator: Option<String>,
+}
+
 pub trait DataSource {
+    fn fetch_description(&self) -> DataSourceDescription;
     fn fetch_info(&self) -> DataSourceInfo;
     fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SummaryTile;
     fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTile;
@@ -215,6 +221,7 @@ pub trait DataSource {
 }
 
 pub trait DataSourceMut {
+    fn fetch_description(&mut self) -> DataSourceDescription;
     fn fetch_info(&mut self) -> DataSourceInfo;
     fn fetch_summary_tile(
         &mut self,
@@ -232,6 +239,9 @@ pub trait DataSourceMut {
 }
 
 impl<T: DataSource> DataSourceMut for T {
+    fn fetch_description(&mut self) -> DataSourceDescription {
+        DataSource::fetch_description(self)
+    }
     fn fetch_info(&mut self) -> DataSourceInfo {
         DataSource::fetch_info(self)
     }
