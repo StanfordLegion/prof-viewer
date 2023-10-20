@@ -291,3 +291,68 @@ impl DeferredDataSource for MergeDeferredDataSource {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge() {
+        let first = EntryInfo::Panel {
+            short_name: "F".to_string(),
+            long_name: "First".to_string(),
+            summary: None,
+            slots: vec![EntryInfo::Slot {
+                short_name: "S1".to_string(),
+                long_name: "Slot 1".to_string(),
+                max_rows: 1,
+            }],
+        };
+        let second = EntryInfo::Panel {
+            short_name: "S".to_string(),
+            long_name: "Second".to_string(),
+            summary: None,
+            slots: vec![EntryInfo::Slot {
+                short_name: "S2".to_string(),
+                long_name: "Slot 2".to_string(),
+                max_rows: 2,
+            }],
+        };
+
+        let merge = MergeDeferredDataSource::merge_entry(first, second);
+
+        let EntryInfo::Panel {
+            short_name,
+            long_name,
+            summary,
+            slots,
+        } = merge
+        else {
+            panic!("unexpected variant result in merge");
+        };
+
+        assert_eq!(short_name, "F");
+        assert_eq!(long_name, "First");
+        assert!(summary.is_none());
+        assert_eq!(slots.len(), 2);
+
+        let EntryInfo::Slot {
+            short_name: slot0_short_name,
+            ..
+        } = &slots[0]
+        else {
+            panic!("unexpected variant result in slot 0");
+        };
+
+        let EntryInfo::Slot {
+            short_name: slot1_short_name,
+            ..
+        } = &slots[1]
+        else {
+            panic!("unexpected variant result in slot 1");
+        };
+
+        assert_eq!(slot0_short_name, "S1");
+        assert_eq!(slot1_short_name, "S2");
+    }
+}
