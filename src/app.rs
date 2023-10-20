@@ -111,13 +111,13 @@ struct SearchState {
     // Search parameters
     query: String,
     last_query: String,
-    last_word_regex: Option<Regex>,
-    include_collapsed_entries: bool,
     whole_word: bool,
-    last_whole_word: bool,
-    last_include_collapsed_entries: bool,
     search_field: FieldID,
     last_search_field: FieldID,
+    last_whole_word: bool,
+    last_word_regex: Option<Regex>,
+    include_collapsed_entries: bool,
+    last_include_collapsed_entries: bool,
     last_view_interval: Option<Interval>,
 
     // Cache of matching items
@@ -1115,13 +1115,13 @@ impl SearchState {
 
             query: "".to_owned(),
             last_query: "".to_owned(),
-            last_word_regex: None,
-            include_collapsed_entries: false,
-            whole_word: false,
-            last_whole_word: false,
-            last_include_collapsed_entries: false,
             search_field: title_id,
             last_search_field: title_id,
+            whole_word: false,
+            last_whole_word: false,
+            last_word_regex: None,
+            include_collapsed_entries: false,
+            last_include_collapsed_entries: false,
             last_view_interval: None,
 
             result_set: BTreeSet::new(),
