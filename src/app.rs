@@ -2545,10 +2545,10 @@ pub fn start(mut data_sources: Vec<Box<dyn DeferredDataSource>>) {
     let app_name = if data_sources.len() == 1 {
         match data_sources[0].fetch_description().source_locator {
             Some(source_locator) => format!("{source_locator} - Legion Prof"),
-            _ => String::from("Unknown Data Source - Legion Prof"),
+            _ => "Unknown Data Source - Legion Prof".to_string(),
         }
     } else {
-        String::from("Unknone Data Source - Legion Prof")
+        "Unknown Data Source - Legion Prof".to_string()
     };
 
     let native_options = eframe::NativeOptions::default();
