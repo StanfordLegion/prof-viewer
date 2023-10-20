@@ -64,11 +64,9 @@ impl HTTPClientDataSource {
 }
 
 impl DeferredDataSource for HTTPClientDataSource {
-    fn fetch_description(&mut self) {}
-
-    fn get_description(&mut self) -> DataSourceDescription {
+    fn fetch_description(&mut self) -> DataSourceDescription {
         DataSourceDescription {
-            source_locator: None,
+            source_locator: Some(self.baseurl.to_string()),
         }
     }
 

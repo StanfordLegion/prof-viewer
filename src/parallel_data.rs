@@ -27,9 +27,7 @@ impl<T: DataSource + Send + Sync + 'static> ParallelDeferredDataSource<T> {
 }
 
 impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDeferredDataSource<T> {
-    fn fetch_description(&mut self) {}
-
-    fn get_description(&mut self) -> DataSourceDescription {
+    fn fetch_description(&mut self) -> DataSourceDescription {
         self.data_source.fetch_description()
     }
 
