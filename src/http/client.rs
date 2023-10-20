@@ -13,7 +13,9 @@ use serde::Deserialize;
 
 use url::Url;
 
-use crate::data::{DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID};
+use crate::data::{
+    DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+};
 use crate::deferred_data::DeferredDataSource;
 use crate::http::fetch::{fetch, DataSourceResponse};
 use crate::http::schema::TileRequestRef;
@@ -62,12 +64,12 @@ impl HTTPClientDataSource {
 }
 
 impl DeferredDataSource for HTTPClientDataSource {
-    fn fetch_description(&mut self) {
-
-    }
+    fn fetch_description(&mut self) {}
 
     fn get_description(&mut self) -> DataSourceDescription {
-        DataSourceDescription {source_locator: None}
+        DataSourceDescription {
+            source_locator: None,
+        }
     }
 
     fn fetch_info(&mut self) {

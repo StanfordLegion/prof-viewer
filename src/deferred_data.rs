@@ -1,5 +1,6 @@
 use crate::data::{
-    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile,
+    SummaryTile, TileID,
 };
 
 pub trait DeferredDataSource {
@@ -36,9 +37,7 @@ impl<T: DataSourceMut> DeferredDataSourceWrapper<T> {
 }
 
 impl<T: DataSourceMut> DeferredDataSource for DeferredDataSourceWrapper<T> {
-    fn fetch_description(&mut self) {
-
-    }
+    fn fetch_description(&mut self) {}
 
     fn get_description(&mut self) -> DataSourceDescription {
         self.data_source.fetch_description()

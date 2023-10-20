@@ -6,9 +6,9 @@ use rand::Rng;
 use std::collections::BTreeMap;
 
 use legion_prof_viewer::data::{
-    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, EntryInfo, Field, FieldID, FieldSchema, Item, ItemMeta,
-    ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile, SlotTileData, SummaryTile, SummaryTileData,
-    TileID, TileSet, UtilPoint,
+    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, EntryInfo, Field, FieldID,
+    FieldSchema, Item, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile, SlotTileData,
+    SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -269,7 +269,9 @@ impl RandomDataSource {
 
 impl DataSourceMut for RandomDataSource {
     fn fetch_description(&mut self) -> DataSourceDescription {
-        DataSourceDescription { source_locator: None }
+        DataSourceDescription {
+            source_locator: None,
+        }
     }
     fn fetch_info(&mut self) -> DataSourceInfo {
         self.info.clone()
