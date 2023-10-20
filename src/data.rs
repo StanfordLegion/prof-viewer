@@ -66,7 +66,7 @@ pub struct ItemLink {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct FieldID(usize);
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct FieldSchema {
     // Field names that may potentially exist on a given item. They are not
     // necessarily all present on any given item
@@ -165,7 +165,7 @@ pub struct ItemMeta {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct TileID(pub Interval);
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct TileSet {
     pub tiles: Vec<Vec<TileID>>,
 }
@@ -441,5 +441,17 @@ impl fmt::Display for TileIDSlug {
         write!(f, "{}", self.0 .0.start.0)?;
         write!(f, "_")?;
         write!(f, "{}", self.0 .0.stop.0)
+    }
+}
+
+// Private helpers for EntryID
+impl EntryID {
+    pub(crate) fn shift_level0(&self, level0_offset: i64) -> EntryID {
+        assert!(!self.0.is_empty());
+        assert_ne!(self.0[0], -1);
+        let mut result = self.clone();
+        result.0[0] += level0_offset;
+        assert!(result.0[0] >= 0);
+        result
     }
 }

@@ -8,6 +8,7 @@ pub mod deferred_data;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod file_data;
 pub mod http;
+pub mod merge_data;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod parallel_data;
 pub mod timestamp;
