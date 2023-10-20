@@ -111,9 +111,9 @@ struct SearchState {
     // Search parameters
     query: String,
     last_query: String,
-    whole_word: bool,
     search_field: FieldID,
     last_search_field: FieldID,
+    whole_word: bool,
     last_whole_word: bool,
     last_word_regex: Option<Regex>,
     include_collapsed_entries: bool,
