@@ -1143,10 +1143,6 @@ impl SearchState {
         if self.query != self.last_query {
             invalidate = true;
             self.last_query = self.query.clone();
-            if self.whole_word {
-                let regex_string = format!("\\b{}\\b", escape(&self.query));
-                self.last_word_regex = Some(Regex::new(regex_string.as_str()).unwrap());
-            }
         }
 
         // Invalidate when the search field changes.
@@ -1159,10 +1155,6 @@ impl SearchState {
         if self.whole_word != self.last_whole_word {
             invalidate = true;
             self.last_whole_word = self.whole_word;
-            if self.whole_word {
-                let regex_string = format!("\\b{}\\b", escape(&self.query));
-                self.last_word_regex = Some(Regex::new(regex_string.as_str()).unwrap());
-            }
         }
 
         // Invalidate when EXCLUDING collapsed entries. (I.e., because the
@@ -1181,6 +1173,11 @@ impl SearchState {
         }
 
         if invalidate {
+            if self.whole_word {
+                let regex_string = format!("\\b{}\\b", escape(&self.query));
+                self.last_word_regex = Some(Regex::new(&regex_string).unwrap());
+            }
+
             self.clear();
         }
     }
