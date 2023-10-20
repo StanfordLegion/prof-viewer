@@ -16,8 +16,7 @@ pub struct MergeDeferredDataSource {
 impl MergeDeferredDataSource {
     pub fn new(data_sources: Vec<Box<dyn DeferredDataSource>>) -> Self {
         assert!(!data_sources.is_empty());
-        let mut infos = Vec::new();
-        infos.resize_with(data_sources.len(), VecDeque::new);
+        let infos = vec![VecDeque::new(); data_sources.len()];
         Self {
             data_sources,
             infos,
