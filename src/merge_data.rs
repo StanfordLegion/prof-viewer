@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
 use crate::data::{
-    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemLink, ItemUID, SlotMetaTile,
-    SlotTile, SummaryTile, TileID,
+    DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemLink,
+    ItemUID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::DeferredDataSource;
 use crate::timestamp::Interval;
@@ -192,6 +192,16 @@ impl MergeDeferredDataSource {
 }
 
 impl DeferredDataSource for MergeDeferredDataSource {
+    fn fetch_description(&self) -> DataSourceDescription {
+        DataSourceDescription {
+            source_locator: self.data_sources.iter().fold(Vec::new(), |acc, x| {
+                acc.into_iter()
+                    .chain(x.fetch_description().source_locator)
+                    .collect()
+            }),
+        }
+    }
+
     fn fetch_info(&mut self) {
         for data_source in &mut self.data_sources {
             data_source.fetch_info();
