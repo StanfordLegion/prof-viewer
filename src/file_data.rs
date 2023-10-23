@@ -33,7 +33,7 @@ impl FileDataSource {
 impl DataSource for FileDataSource {
     fn fetch_description(&self) -> DataSourceDescription {
         DataSourceDescription {
-            source_locator: Some(String::from(self.basedir.to_string_lossy())),
+            source_locator: vec![String::from(self.basedir.to_string_lossy())],
         }
     }
     fn fetch_info(&self) -> DataSourceInfo {

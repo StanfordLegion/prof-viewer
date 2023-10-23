@@ -208,7 +208,7 @@ pub struct SlotMetaTile {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DataSourceDescription {
-    pub source_locator: Option<String>,
+    pub source_locator: Vec<String>,
 }
 
 pub trait DataSource {
@@ -221,7 +221,7 @@ pub trait DataSource {
 }
 
 pub trait DataSourceMut {
-    fn fetch_description(&mut self) -> DataSourceDescription;
+    fn fetch_description(&self) -> DataSourceDescription;
     fn fetch_info(&mut self) -> DataSourceInfo;
     fn fetch_summary_tile(
         &mut self,
@@ -239,7 +239,7 @@ pub trait DataSourceMut {
 }
 
 impl<T: DataSource> DataSourceMut for T {
-    fn fetch_description(&mut self) -> DataSourceDescription {
+    fn fetch_description(&self) -> DataSourceDescription {
         DataSource::fetch_description(self)
     }
     fn fetch_info(&mut self) -> DataSourceInfo {

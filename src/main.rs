@@ -268,9 +268,9 @@ impl RandomDataSource {
 }
 
 impl DataSourceMut for RandomDataSource {
-    fn fetch_description(&mut self) -> DataSourceDescription {
+    fn fetch_description(&self) -> DataSourceDescription {
         DataSourceDescription {
-            source_locator: Some(String::from("Random Data Source")),
+            source_locator: vec![String::from("Random Data Source")],
         }
     }
     fn fetch_info(&mut self) -> DataSourceInfo {
