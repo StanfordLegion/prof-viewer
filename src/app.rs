@@ -8,6 +8,7 @@ use egui::{
     Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
+use itertools::Itertools;
 use percentage::{Percentage, PercentageInteger};
 use regex::{escape, Regex};
 use serde::{Deserialize, Serialize};
@@ -2548,10 +2549,12 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
             .collect()
     });
 
-    let locator = match &all_locators[..] {
+    let unique_locators = all_locators.into_iter().unique().collect_vec();
+
+    let locator = match &unique_locators[..] {
         [] => "No data source".to_string(),
         [x] => x.to_string(),
-        [x, ..] => format!("{} and {} other sources", x, all_locators.len() - 1),
+        [x, ..] => format!("{} and {} other sources", x, unique_locators.len() - 1),
     };
 
     let app_name = format!("{locator} - Legion Prof");
