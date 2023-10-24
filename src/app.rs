@@ -8,6 +8,7 @@ use egui::{
     Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
+#[cfg(not(target_arch = "wasm32"))]
 use itertools::Itertools;
 use percentage::{Percentage, PercentageInteger};
 use regex::{escape, Regex};
