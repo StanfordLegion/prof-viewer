@@ -2544,11 +2544,10 @@ impl UiExtra for egui::Ui {
 pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
     env_logger::try_init().unwrap_or(()); // Log to stderr (if you run with `RUST_LOG=debug`).
 
-    let all_locators = data_sources.iter().fold(Vec::new(), |acc, x| {
-        acc.into_iter()
-            .chain(x.fetch_description().source_locator)
-            .collect()
-    });
+    let all_locators = data_sources
+        .iter()
+        .flat_map(|x| x.fetch_description().source_locator)
+        .collect::<Vec<_>>();
 
     let unique_locators = all_locators.into_iter().unique().collect_vec();
 

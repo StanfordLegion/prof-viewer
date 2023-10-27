@@ -194,11 +194,11 @@ impl MergeDeferredDataSource {
 impl DeferredDataSource for MergeDeferredDataSource {
     fn fetch_description(&self) -> DataSourceDescription {
         DataSourceDescription {
-            source_locator: self.data_sources.iter().fold(Vec::new(), |acc, x| {
-                acc.into_iter()
-                    .chain(x.fetch_description().source_locator)
-                    .collect()
-            }),
+            source_locator: self
+                .data_sources
+                .iter()
+                .flat_map(|x| x.fetch_description().source_locator)
+                .collect::<Vec<_>>(),
         }
     }
 
