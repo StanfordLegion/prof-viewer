@@ -353,7 +353,7 @@ impl Summary {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx) {
             config
                 .data_source
                 .fetch_summary_tile(&self.entry_id, tile_id, false);
@@ -579,7 +579,7 @@ impl Slot {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx) {
             config
                 .data_source
                 .fetch_slot_tile(&self.entry_id, tile_id, false);
@@ -787,7 +787,7 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx) {
             self.fetch_meta_tile(tile_id, config);
         }
     }
@@ -1322,7 +1322,8 @@ impl Config {
         }
     }
 
-    fn request_tiles(&mut self, request_interval: Interval) -> Vec<TileID> {
+    fn request_tiles(&mut self, cx: &mut Context) -> Vec<TileID> {
+        let request_interval = cx.view_interval.intersection(cx.total_interval);
         if self.last_request_interval == Some(request_interval) {
             return self.request_tile_cache.clone();
         }
