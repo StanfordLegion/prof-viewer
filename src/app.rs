@@ -230,6 +230,9 @@ struct Context {
     scale_factor: f32,
 
     #[serde(skip)]
+    row_scroll_delta: i32,
+
+    #[serde(skip)]
     subheading_size: f32,
 
     // This is across all profiles
@@ -1706,6 +1709,7 @@ impl Window {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 enum PanDirection {
     Left,
     Right,
@@ -1737,6 +1741,7 @@ impl ProfApp {
         result.windows.clear();
 
         result.cx.scale_factor = 1.0;
+        result.cx.row_scroll_delta = 0;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -1866,6 +1871,7 @@ impl ProfApp {
             RedoZoom,
             ResetZoom,
             Pan(PercentageInteger, PanDirection),
+            Scroll(i32),
             ExpandVertical,
             ShrinkVertical,
             ResetVertical,
@@ -1903,6 +1909,10 @@ impl ProfApp {
                     Actions::Pan(Percentage::from(1), PanDirection::Left)
                 } else if i.key_pressed(egui::Key::ArrowRight) {
                     Actions::Pan(Percentage::from(1), PanDirection::Right)
+                } else if i.key_pressed(egui::Key::ArrowUp) {
+                    Actions::Scroll(1)
+                } else if i.key_pressed(egui::Key::ArrowDown) {
+                    Actions::Scroll(-1)
                 } else {
                     Actions::NoAction
                 }
@@ -1914,6 +1924,10 @@ impl ProfApp {
                 Actions::Pan(Percentage::from(5), PanDirection::Left)
             } else if i.key_pressed(egui::Key::ArrowRight) {
                 Actions::Pan(Percentage::from(5), PanDirection::Right)
+            } else if i.key_pressed(egui::Key::ArrowUp) {
+                Actions::Scroll(5)
+            } else if i.key_pressed(egui::Key::ArrowDown) {
+                Actions::Scroll(-5)
             } else {
                 Actions::NoAction
             }
@@ -1925,6 +1939,7 @@ impl ProfApp {
             Actions::RedoZoom => ProfApp::redo_pan_zoom(cx),
             Actions::ResetZoom => ProfApp::zoom(cx, cx.total_interval),
             Actions::Pan(percent, dir) => ProfApp::pan(cx, percent, dir),
+            Actions::Scroll(rows) => cx.row_scroll_delta = rows,
             Actions::ExpandVertical => ProfApp::multiply_scale_factor(cx, 2.0),
             Actions::ShrinkVertical => ProfApp::multiply_scale_factor(cx, 0.5),
             Actions::ResetVertical => ProfApp::reset_scale_factor(cx),
@@ -2068,6 +2083,8 @@ impl ProfApp {
                 show_row("Zoom to Interval", "Click and Drag");
                 show_row("Pan 5%", "Left/Right Arrow");
                 show_row("Pan 1%", "Shift + Left/Right Arrow");
+                show_row("Vertical Scroll", "Up/Down Arrow");
+                show_row("Fine Vertical Scroll", "Shift + Up/Down Arrow");
                 show_row("Zoom In", "Ctrl + Plus/Equals");
                 show_row("Zoom Out", "Ctrl + Minus");
                 show_row("Undo Pan/Zoom", "Ctrl + Left Arrow");
@@ -2390,6 +2407,10 @@ impl eframe::App for ProfApp {
             let row_height = ui.fonts(|f| f.row_height(&font_id));
             // Just set this on every frame for now
             cx.row_height = row_height * cx.scale_factor;
+
+            let y_scroll_delta = cx.row_height * cx.row_scroll_delta as f32;
+            ui.scroll_with_delta(Vec2::new(0.0, y_scroll_delta));
+            cx.row_scroll_delta = 0;
 
             let mut remaining = windows.len();
             // Only wrap in a frame if more than one profile
