@@ -18,8 +18,11 @@ eframe = { version = "0.22.0", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
+    "__screenshot", # __screenshot is so we can dump a screenshot using EFRAME_SCREENSHOT_TO
 ] }
+image = { version = "0.24", default-features = false, features = ["png"] }
 log = "0.4"
+rfd = "0.11.0"
 
 serde = { version = "1", features = ["derive"] }
 ciborium = { version = "0.2" }
