@@ -4,8 +4,10 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+use chrono::prelude::Local;
 use egui::{
-    Align2, ColorImage, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
+    Align2, Color32, ColorImage, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke,
+    TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 #[cfg(not(target_arch = "wasm32"))]
@@ -2285,7 +2287,8 @@ impl eframe::App for ProfApp {
         }
 
         if let Some(screenshot) = self.screenshot.take() {
-            if let Some(mut path) = rfd::FileDialog::new().save_file() {
+            let filename = format!("Legion Prof {}", Local::now().format("%F-%H-%M-%S"));
+            if let Some(mut path) = rfd::FileDialog::new().set_file_name(&filename).save_file() {
                 path.set_extension("png");
                 image::save_buffer(
                     &path,
