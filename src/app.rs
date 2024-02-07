@@ -2511,7 +2511,7 @@ impl eframe::App for ProfApp {
                     // the center to place the item in the middle of it.
                     ItemLinkNavigationMode::Pan => cx
                         .view_interval
-                        .translate(cx.view_interval.center().0 - interval.center().0),
+                        .translate(interval.center().0 - cx.view_interval.center().0),
                 };
                 ProfApp::zoom(cx, interval);
                 window.expand_slot(&item_loc.entry_id);
