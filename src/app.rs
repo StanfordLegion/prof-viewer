@@ -2087,7 +2087,20 @@ impl ProfApp {
         }
     }
 
-    fn display_bindings(ui: &mut egui::Ui) {
+    fn display_controls(ui: &mut egui::Ui, mode: &mut ItemLinkNavigationMode) {
+        fn show_row_ui(
+            body: &mut egui_extras::TableBody<'_>,
+            label: &str,
+            thunk: impl FnMut(&mut egui::Ui),
+        ) {
+            body.row(20.0, |mut row| {
+                row.col(|ui| {
+                    ui.strong(label);
+                });
+                row.col(thunk);
+            });
+        }
+
         TableBuilder::new(ui)
             .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -2095,13 +2108,8 @@ impl ProfApp {
             .column(Column::remainder())
             .body(|mut body| {
                 let mut show_row = |a, b| {
-                    body.row(20.0, |mut row| {
-                        row.col(|ui| {
-                            ui.strong(a);
-                        });
-                        row.col(|ui| {
-                            ui.label(b);
-                        });
+                    show_row_ui(&mut body, a, |ui| {
+                        ui.label(b);
                     });
                 };
                 show_row("Zoom to Interval", "Click and Drag");
@@ -2118,6 +2126,14 @@ impl ProfApp {
                 show_row("Shrink Vertical Spacing", "Ctrl + Alt + Minus");
                 show_row("Reset Vertical Spacing", "Ctrl + Alt + 0");
                 show_row("Toggle This Window", "H");
+                show_row_ui(&mut body, "Item Link Zoom or Pan", |ui: &mut _| {
+                    egui::ComboBox::from_id_source("Item Link Zoom or Pan")
+                        .selected_text(format!("{:?}", mode))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(mode, ItemLinkNavigationMode::Zoom, "Zoom");
+                            ui.selectable_value(mode, ItemLinkNavigationMode::Pan, "Pan");
+                        });
+                });
             });
     }
 
@@ -2429,7 +2445,9 @@ impl eframe::App for ProfApp {
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        ui.label(format!("FPS: {_fps:.0}"));
+                        if cx.debug {
+                            ui.label(format!("FPS: {_fps:.0}"));
+                        }
                     }
                 });
 
@@ -2474,7 +2492,7 @@ impl eframe::App for ProfApp {
         egui::Window::new("Controls")
             .open(&mut cx.show_controls)
             .resizable(false)
-            .show(ctx, Self::display_bindings);
+            .show(ctx, |ui| Self::display_controls(ui, &mut cx.item_link_mode));
 
         for window in windows.iter_mut() {
             let mut zoom_target = None;
