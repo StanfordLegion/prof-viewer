@@ -759,7 +759,11 @@ impl Slot {
                             std::collections::btree_map::Entry::Vacant(e) => {
                                 e.insert(ItemDetail {
                                     meta: Some(item_meta.clone()),
-                                    loc: ItemLocator { entry_id, irow, item_uid: item_meta.item_uid },
+                                    loc: ItemLocator {
+                                        entry_id,
+                                        irow,
+                                        item_uid: item_meta.item_uid,
+                                    },
                                 });
                             }
                             std::collections::btree_map::Entry::Occupied(e) => {
@@ -1410,6 +1414,18 @@ impl Config {
             .collect();
         self.request_tile_cache.clone()
     }
+
+    fn scroll_to_item(&mut self, item_loc: ItemLocator) {
+        self.scroll_to_item = Some(item_loc.clone());
+        self.scroll_to_item_retry = None;
+
+        self.items_selected
+            .entry(item_loc.item_uid)
+            .or_insert_with(|| ItemDetail {
+                meta: None,
+                loc: item_loc,
+            });
+    }
 }
 
 impl Window {
@@ -1439,7 +1455,7 @@ impl Window {
 
     fn find_item_irow(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<usize> {
         let slot = self.find_slot(entry_id)?;
-        for (_, tile) in &slot.tiles {
+        for tile in slot.tiles.values() {
             let Some(tile) = tile else {
                 continue;
             };
@@ -1448,6 +1464,23 @@ impl Window {
                     if item.item_uid == item_uid {
                         let rows = tile.items.len();
                         return Some(rows - row - 1);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn find_item_meta(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<&ItemMeta> {
+        let slot = self.find_slot(entry_id)?;
+        for tile in slot.tile_metas.values() {
+            let Some(tile) = tile else {
+                continue;
+            };
+            for items in &tile.items {
+                for item in items {
+                    if item.item_uid == item_uid {
+                        return Some(item);
                     }
                 }
             }
@@ -1478,7 +1511,10 @@ impl Window {
                 };
 
                 // First scroll attempt goes to the processor
-                if let Some(ItemLocator { ref entry_id, irow, .. }) = self.config.scroll_to_item {
+                if let Some(ItemLocator {
+                    ref entry_id, irow, ..
+                }) = self.config.scroll_to_item
+                {
                     let prefix_height = self.panel.height(Some(entry_id), &self.config, cx);
                     scroll_to(irow.unwrap_or(0), prefix_height);
                     if irow.is_none() {
@@ -1491,7 +1527,12 @@ impl Window {
 
                 // If we're able to find the item, we do a second scroll to the item
                 let mut found_irow = None;
-                if let Some(ItemLocator { ref entry_id, irow, item_uid }) = self.config.scroll_to_item_retry {
+                if let Some(ItemLocator {
+                    ref entry_id,
+                    irow,
+                    item_uid,
+                }) = self.config.scroll_to_item_retry
+                {
                     assert!(irow.is_none());
                     found_irow = self.find_item_irow(entry_id, item_uid);
                 }
@@ -1745,6 +1786,7 @@ impl Window {
 
         self.config.search_state.build_entry_tree();
 
+        let mut scroll_target = None;
         ScrollArea::vertical()
             // Hack: estimate size of bottom UI.
             .max_height(ui.available_height() - 70.0)
@@ -1772,13 +1814,11 @@ impl Window {
                                                         .interval
                                                         .grow(item.interval.duration_ns() / 20);
                                                     ProfApp::zoom(cx, interval);
-                                                    self.config.scroll_to_item =
-                                                        Some(ItemLocator {
-                                                            entry_id: level2_slot.entry_id.clone(),
-                                                            irow: Some(item.irow),
-                                                            item_uid: item.item_uid,
-                                                        });
-                                                    self.config.scroll_to_item_retry = None;
+                                                    scroll_target = Some(ItemLocator {
+                                                        entry_id: level2_slot.entry_id.clone(),
+                                                        irow: Some(item.irow),
+                                                        item_uid: item.item_uid,
+                                                    });
                                                     level2_slot.expanded = true;
                                                     level1_slot.expanded = true;
                                                     level0_slot.expanded = true;
@@ -1792,6 +1832,9 @@ impl Window {
                     });
                 }
             });
+        if let Some(target) = scroll_target {
+            self.config.scroll_to_item(target);
+        }
     }
 
     fn search_controls(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
@@ -2310,7 +2353,7 @@ impl ProfApp {
         result
     }
 
-    fn display_task_details(
+    fn display_item_details(
         ui: &mut egui::Ui,
         item: &ItemDetail,
         field_schema: &FieldSchema,
@@ -2362,10 +2405,7 @@ impl ProfApp {
             });
         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
             if ui.button(cx.item_link_mode.label_text()).clicked() {
-                result = Some((
-                    item.loc.clone(),
-                    item_meta.original_interval,
-                ));
+                result = Some((item.loc.clone(), item_meta.original_interval));
             }
         });
         result
@@ -2572,32 +2612,40 @@ impl eframe::App for ProfApp {
 
         for window in windows.iter_mut() {
             let mut zoom_target = None;
-            window
-                .config
-                .items_selected
-                .retain(|_, item| {
-                    let mut enabled = true;
-                    let short_title = match &item.meta {
-                        Some(meta) => meta.title.chars().take(50).collect(),
-                        None => format!("Item <UID: {:?}>", item.loc.item_uid),
-                    };
-                    egui::Window::new(short_title)
-                        .id(egui::Id::new(item.loc.item_uid.0))
-                        .open(&mut enabled)
-                        .resizable(true)
-                        .show(ctx, |ui| {
-                            let target = Self::display_task_details(
-                                ui,
-                                item,
-                                &window.config.field_schema,
-                                cx,
-                            );
-                            if target.is_some() {
-                                zoom_target = target;
-                            }
-                        });
-                    enabled
-                });
+
+            // Hack: work around mutability conflict
+            let mut items_selected = BTreeMap::new();
+            std::mem::swap(&mut items_selected, &mut window.config.items_selected);
+            items_selected.retain(|_, item| {
+                // Populate the item meta if it's not already there
+                if item.meta.is_none() {
+                    if let Some(meta) = window.find_item_meta(&item.loc.entry_id, item.loc.item_uid)
+                    {
+                        item.meta = Some(meta.clone());
+                    }
+                }
+
+                let short_title = match &item.meta {
+                    Some(meta) => meta.title.chars().take(50).collect(),
+                    None => format!("Item <Item UID: {}>", item.loc.item_uid.0),
+                };
+
+                let mut enabled = true;
+                egui::Window::new(short_title)
+                    .id(egui::Id::new(item.loc.item_uid.0))
+                    .open(&mut enabled)
+                    .resizable(true)
+                    .show(ctx, |ui| {
+                        let target =
+                            Self::display_item_details(ui, item, &window.config.field_schema, cx);
+                        if target.is_some() {
+                            zoom_target = target;
+                        }
+                    });
+                enabled
+            });
+            std::mem::swap(&mut items_selected, &mut window.config.items_selected);
+
             if let Some((item_loc, interval)) = zoom_target {
                 let interval = match cx.item_link_mode {
                     // In Zoom mode, put the item in the center of the view
@@ -2611,8 +2659,7 @@ impl eframe::App for ProfApp {
                 };
                 ProfApp::zoom(cx, interval);
                 window.expand_slot(&item_loc.entry_id);
-                window.config.scroll_to_item = Some(item_loc);
-                window.config.scroll_to_item_retry = None;
+                window.config.scroll_to_item(item_loc);
             }
         }
 
