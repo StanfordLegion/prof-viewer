@@ -1453,6 +1453,12 @@ impl Window {
         self.panel.expand_slot(entry_id, 0);
     }
 
+    fn inflate_meta(&mut self, entry_id: &EntryID, cx: &mut Context) {
+        // Use the panel version directly to avoid a mutability conflict
+        let slot = self.panel.find_slot_mut(entry_id, 0).unwrap();
+        slot.inflate_meta(&mut self.config, cx);
+    }
+
     fn find_item_irow(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<usize> {
         let slot = self.find_slot(entry_id)?;
         for tile in slot.tiles.values() {
@@ -2619,6 +2625,7 @@ impl eframe::App for ProfApp {
             items_selected.retain(|_, item| {
                 // Populate the item meta if it's not already there
                 if item.meta.is_none() {
+                    window.inflate_meta(&item.loc.entry_id, cx);
                     if let Some(meta) = window.find_item_meta(&item.loc.entry_id, item.loc.item_uid)
                     {
                         item.meta = Some(meta.clone());
