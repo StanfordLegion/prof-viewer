@@ -222,16 +222,11 @@ struct IntervalSelectState {
     stop_error: Option<IntervalSelectError>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 enum ItemLinkNavigationMode {
+    #[default]
     Zoom,
     Pan,
-}
-
-impl Default for ItemLinkNavigationMode {
-    fn default() -> Self {
-        ItemLinkNavigationMode::Zoom
-    }
 }
 
 impl ItemLinkNavigationMode {
