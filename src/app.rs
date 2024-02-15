@@ -4,8 +4,10 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
+use chrono::prelude::Local;
 use egui::{
-    Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
+    Align2, Color32, ColorImage, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke,
+    TextStyle, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 #[cfg(not(target_arch = "wasm32"))]
@@ -280,6 +282,9 @@ struct Context {
     #[serde(skip)]
     slot_rect: Option<Rect>,
 
+    #[serde(skip)]
+    take_screenshot: bool,
+
     item_link_mode: ItemLinkNavigationMode,
 
     toggle_dark_mode: bool,
@@ -306,6 +311,8 @@ struct ProfApp {
     windows: Vec<Window>,
 
     cx: Context,
+
+    screenshot: Option<ColorImage>,
 
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip)]
@@ -1997,6 +2004,7 @@ impl ProfApp {
 
     fn reset_ui(cx: &mut Context, windows: &mut [Window]) {
         cx.show_controls = false;
+        cx.take_screenshot = false;
         for window in windows.iter_mut() {
             window.config.items_selected.clear();
         }
@@ -2019,6 +2027,7 @@ impl ProfApp {
             ExpandVertical,
             ShrinkVertical,
             ResetVertical,
+            TakeScreenShot,
             ToggleControls,
             ResetUI,
             NoAction,
@@ -2045,6 +2054,8 @@ impl ProfApp {
                     Actions::RedoZoom
                 } else if i.key_pressed(egui::Key::Num0) {
                     Actions::ResetZoom
+                } else if i.key_pressed(egui::Key::Space) {
+                    Actions::TakeScreenShot
                 } else {
                     Actions::NoAction
                 }
@@ -2087,6 +2098,7 @@ impl ProfApp {
             Actions::ExpandVertical => ProfApp::multiply_scale_factor(cx, 2.0),
             Actions::ShrinkVertical => ProfApp::multiply_scale_factor(cx, 0.5),
             Actions::ResetVertical => ProfApp::reset_scale_factor(cx),
+            Actions::TakeScreenShot => cx.take_screenshot = true,
             Actions::ToggleControls => cx.show_controls = !cx.show_controls,
             Actions::ResetUI => ProfApp::reset_ui(cx, windows),
             Actions::NoAction => {}
@@ -2233,6 +2245,7 @@ impl ProfApp {
                     });
                 };
                 show_row("Zoom to Interval", "Click and Drag");
+                show_row("Take Screenshot", "Ctrl + Space");
                 show_row("Pan 5%", "Left/Right Arrow");
                 show_row("Pan 1%", "Shift + Left/Right Arrow");
                 show_row("Vertical Scroll", "Up/Down Arrow");
@@ -2424,8 +2437,15 @@ impl eframe::App for ProfApp {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
+    fn post_rendering(&mut self, _screen_size_px: [u32; 2], frame: &eframe::Frame) {
+        // this is inspired by the Egui screenshot example
+        if let Some(screenshot) = frame.screenshot() {
+            self.screenshot = Some(screenshot);
+        }
+    }
+
     /// Called each time the UI needs repainting.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let Self {
             pending_data_sources,
             windows,
@@ -2434,6 +2454,26 @@ impl eframe::App for ProfApp {
             last_update,
             ..
         } = self;
+
+        if cx.take_screenshot {
+            frame.request_screenshot();
+            cx.take_screenshot = false;
+        }
+
+        if let Some(screenshot) = self.screenshot.take() {
+            let filename = format!("Legion Prof {}", Local::now().format("%F-%H-%M-%S"));
+            if let Some(mut path) = rfd::FileDialog::new().set_file_name(&filename).save_file() {
+                path.set_extension("png");
+                image::save_buffer(
+                    &path,
+                    screenshot.as_raw(),
+                    screenshot.width() as u32,
+                    screenshot.height() as u32,
+                    image::ColorType::Rgba8,
+                )
+                .unwrap();
+            }
+        }
 
         if let Some(mut source) = pending_data_sources.pop_front() {
             // We made one request, so we know there is always zero or one
