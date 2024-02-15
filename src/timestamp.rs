@@ -128,6 +128,9 @@ impl Interval {
     pub fn new(start: Timestamp, stop: Timestamp) -> Self {
         Self { start, stop }
     }
+    pub fn center(self) -> Timestamp {
+        Timestamp(self.start.0 + self.duration_ns() / 2)
+    }
     pub fn duration_ns(self) -> i64 {
         self.stop.0 - self.start.0
     }
