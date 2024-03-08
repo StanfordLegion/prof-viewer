@@ -18,6 +18,7 @@ rust-version = "1.74"
 default = []
 client = ["dep:reqwest", "dep:url"]
 server = ["dep:actix-cors", "dep:actix-web"]
+nvtxw = ["dep:nvtxw"]
 
 [dependencies]
 egui = "0.25.0"
@@ -53,6 +54,8 @@ url = { version = "2", optional = true }
 actix-web = { version = "4", optional = true }
 actix-cors = { version = "0.6", optional = true }
 
+# nvtxw:
+nvtxw = { version = "0.1", optional = true }
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
