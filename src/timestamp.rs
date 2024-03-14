@@ -138,7 +138,7 @@ impl Interval {
         point >= self.start && point < self.stop
     }
     pub fn overlaps(self, other: Interval) -> bool {
-        !(other.stop < self.start || other.start >= self.stop)
+        !(other.stop <= self.start || other.start >= self.stop)
     }
     pub fn intersection(self, other: Interval) -> Self {
         Self {
