@@ -327,27 +327,92 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_translate_positive() {
-            let start = Timestamp::parse("234.5 ms").unwrap();
-            let end = Timestamp::parse("235.5 ms").unwrap();
-            let expected_start = Timestamp(start.0 + 250);
-            let expected_end = Timestamp(end.0 + 250);
-            assert_eq!(
-                Interval::new(start, end).translate(250),
-                Interval::new(expected_start, expected_end)
-            )
+        fn test_center() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(0), Timestamp(0));
+            assert_eq!(i0.center(), Timestamp(5));
+            assert_eq!(i1.center(), Timestamp(0));
         }
 
         #[test]
-        fn test_translate_negative() {
-            let start = Timestamp::parse("234.5 ms").unwrap();
-            let end = Timestamp::parse("235.5 ms").unwrap();
-            let expected_start = Timestamp(start.0 - 250);
-            let expected_end = Timestamp(end.0 - 250);
+        fn test_duration_ns() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(0), Timestamp(0));
+            assert_eq!(i0.duration_ns(), 10);
+            assert_eq!(i1.duration_ns(), 0);
+        }
+
+        #[test]
+        fn test_contains() {
+            // Intervals are exclusive: they do NOT contain stop
+            let i0 = Interval::new(Timestamp(2), Timestamp(4));
+            assert!(!i0.contains(Timestamp(1)));
+            assert!(i0.contains(Timestamp(2))); // Included
+            assert!(i0.contains(Timestamp(3)));
+            assert!(!i0.contains(Timestamp(4))); // Not included!
+            assert!(!i0.contains(Timestamp(5)));
+        }
+
+        #[test]
+        fn test_overlap() {
+            // Intervals are exclusive: they do NOT contain stop
+            let i0 = Interval::new(Timestamp(0), Timestamp(1));
+            let i1 = Interval::new(Timestamp(1), Timestamp(2));
+            assert!(!i0.overlaps(i1));
+            assert!(!i1.overlaps(i0));
+
+            let i2 = Interval::new(Timestamp(0), Timestamp(2));
+            let i3 = Interval::new(Timestamp(1), Timestamp(3));
+            assert!(i2.overlaps(i3));
+            assert!(i3.overlaps(i2));
+
+            // Non-empty intervals always overlap themselves
+            assert!(i2.overlaps(i2));
+            assert!(i3.overlaps(i3));
+
+            // Empty intervals overlap nothing, not even themselves
+            let i4 = Interval::new(Timestamp(4), Timestamp(4));
+            assert!(!i4.overlaps(i4));
+        }
+
+        #[test]
+        fn test_intersection() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(5), Timestamp(15));
             assert_eq!(
-                Interval::new(start, end).translate(-250),
-                Interval::new(expected_start, expected_end)
-            )
+                i0.intersection(i1),
+                Interval::new(Timestamp(5), Timestamp(10))
+            );
+            assert_eq!(
+                i1.intersection(i0),
+                Interval::new(Timestamp(5), Timestamp(10))
+            );
+        }
+
+        #[test]
+        fn test_union() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(5), Timestamp(15));
+            assert_eq!(i0.union(i1), Interval::new(Timestamp(0), Timestamp(15)));
+            assert_eq!(i1.union(i0), Interval::new(Timestamp(0), Timestamp(15)));
+        }
+
+        #[test]
+        fn test_grow() {
+            let i0 = Interval::new(Timestamp(5), Timestamp(10));
+            let i1 = Interval::new(Timestamp(20), Timestamp(20));
+            assert_eq!(i0.grow(2), Interval::new(Timestamp(3), Timestamp(12)));
+            assert_eq!(i1.grow(2), Interval::new(Timestamp(18), Timestamp(22)));
+        }
+
+        #[test]
+        fn test_translate() {
+            let origin = Interval::new(Timestamp(1000), Timestamp(2000));
+            let expect = Interval::new(Timestamp(1250), Timestamp(2250));
+            assert_eq!(origin.translate(250), expect);
+
+            let expect = Interval::new(Timestamp(750), Timestamp(1750));
+            assert_eq!(origin.translate(-250), expect);
         }
     }
 }
