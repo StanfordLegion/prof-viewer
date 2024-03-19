@@ -25,6 +25,7 @@ pub struct DataSourceInfo {
     pub interval: Interval,
     pub tile_set: TileSet,
     pub field_schema: FieldSchema,
+    pub warning_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

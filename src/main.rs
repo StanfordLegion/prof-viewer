@@ -92,6 +92,7 @@ impl RandomDataSource {
             interval: Self::interval(&mut rng),
             tile_set: TileSet::default(),
             field_schema,
+            warning_message: Some("Demo only. The data in this profile is synthetic.".to_string()),
         };
 
         Self {

@@ -153,6 +153,7 @@ struct Config {
     // This is just for the local profile
     interval: Interval,
     tile_set: TileSet,
+    warning_message: Option<String>,
 
     data_source: CountingDeferredDataSource<Box<dyn DeferredDataSource>>,
 
@@ -1353,6 +1354,7 @@ impl Config {
         let kinds = info.entry_info.kinds();
         let interval = info.interval;
         let tile_set = info.tile_set;
+        let warning_message = info.warning_message;
 
         let mut field_schema = info.field_schema;
         assert!(!field_schema.contains_name("Title"));
@@ -1367,6 +1369,7 @@ impl Config {
             kind_filter: BTreeSet::new(),
             interval,
             tile_set,
+            warning_message,
             data_source: CountingDeferredDataSource::new(data_source),
             search_state,
             items_selected: BTreeMap::new(),
@@ -1497,7 +1500,10 @@ impl Window {
     fn content(&mut self, ui: &mut egui::Ui, cx: &mut Context) {
         ui.horizontal(|ui| {
             ui.heading(format!("Profile {}", self.index));
-            ui.label(cx.view_interval.to_string())
+            ui.label(cx.view_interval.to_string());
+            if let Some(message) = &self.config.warning_message {
+                ui.label(RichText::new(message).color(Color32::RED).heading());
+            }
         });
 
         ScrollArea::vertical()
