@@ -1502,7 +1502,7 @@ impl Window {
             ui.heading(format!("Profile {}", self.index));
             ui.label(cx.view_interval.to_string());
             if let Some(message) = &self.config.warning_message {
-                ui.label(RichText::new(message).color(Color32::RED).heading());
+                ui.label(RichText::new(message).color(Color32::RED));
             }
         });
 
