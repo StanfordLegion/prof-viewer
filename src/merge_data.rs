@@ -393,6 +393,7 @@ mod tests {
             interval: Interval::new(Timestamp(0), Timestamp(1000)),
             tile_set: TileSet { tiles: Vec::new() },
             field_schema: FieldSchema::new(),
+            warning_message: None,
         };
         let second = DataSourceInfo {
             entry_info: EntryInfo::Panel {
@@ -408,6 +409,7 @@ mod tests {
             interval: Interval::new(Timestamp(0), Timestamp(2000)),
             tile_set: TileSet { tiles: Vec::new() },
             field_schema: FieldSchema::new(),
+            warning_message: None,
         };
 
         let infos = vec![first, second];
