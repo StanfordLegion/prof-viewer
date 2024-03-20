@@ -1905,6 +1905,12 @@ impl ProfApp {
         };
         cc.egui_ctx.set_visuals(theme);
 
+        // Set solid scroll bar (default from egui pre-0.24)
+        // The new default "thin" style isn't clickable with our canvas widget
+        cc.egui_ctx.style_mut(|style| {
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+        });
+
         result
     }
 
