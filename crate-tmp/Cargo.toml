@@ -1,0 +1,13 @@
+[package]
+name = "nvtxw"
+version = "0.0.0"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception"
+description = "Rust bindings for the NVIDIA® Tools Extension SDK Writer API (NVTXW)"
+include = ["src/*", "build.rs"]
+
+[dependencies]
+
+[build-dependencies]
+bindgen = ">=0"
+cc = ">=1"
