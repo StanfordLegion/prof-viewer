@@ -19,7 +19,9 @@ use crate::data::{
     ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, TileSet, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
-use crate::timestamp::{Interval, Timestamp, TimestampParseError};
+use crate::timestamp::{
+    Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
+};
 
 /// Overview:
 ///   ProfApp -> Context, Window *
@@ -2186,10 +2188,31 @@ impl ProfApp {
             let time = (hover.x - rect.left()) / rect.width();
             let time = cx.view_interval.lerp(time);
 
+            let label_text = if let Some(drag) = drag_interval {
+                format!("{drag}")
+            } else {
+                let units: TimestampUnits = cx.view_interval.into();
+                let time_units = TimestampDisplay {
+                    timestamp: time,
+                    units,
+                    include_units: true,
+                };
+                format!("t={time_units}")
+            };
+
+            let label_size = {
+                let label_margin = ui.spacing().window_margin;
+                let available_width = ui.available_width() - 2.0 * label_margin.sum().x;
+                let label_text: egui::WidgetText = (&label_text).into();
+                let label_text =
+                    label_text.into_galley(ui, None, available_width, egui::TextStyle::Body);
+                label_text.size() + 2.0 * label_margin.sum()
+            };
+
             // Hack: This avoids an issue where popups displayed normally are
             // forced to stack, even when an explicit position is
             // requested. Instead we display the popup manually via black magic
-            let popup_size = if drag_interval.is_some() { 300.0 } else { 90.0 };
+            let popup_size = label_size.x;
             let mut popup_rect = Rect::from_min_size(
                 Pos2::new(top.x + HOVER_PADDING, top.y),
                 Vec2::new(popup_size, 100.0),
@@ -2208,14 +2231,8 @@ impl ProfApp {
                 popup_rect.expand(16.0),
             );
             egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
-                if let Some(drag) = drag_interval {
-                    ui.label(format!("{drag}"));
-                } else {
-                    ui.label(format!("t={time}"));
-                }
+                ui.label(label_text);
             });
-
-            // ui.show_tooltip_at("timestamp_tooltip", Some(top), format!("t={time}"));
         }
     }
 
@@ -2709,12 +2726,6 @@ trait UiExtra {
         rect: &Rect,
         add_contents: impl FnOnce(&mut egui::Ui),
     );
-    fn show_tooltip_at(
-        &mut self,
-        id_source: impl core::hash::Hash,
-        suggested_position: Option<Pos2>,
-        text: impl Into<egui::WidgetText>,
-    );
 }
 
 impl UiExtra for egui::Ui {
@@ -2750,21 +2761,6 @@ impl UiExtra for egui::Ui {
             self.auto_id_with(id_source),
             rect,
             add_contents,
-        );
-    }
-    fn show_tooltip_at(
-        &mut self,
-        id_source: impl core::hash::Hash,
-        suggested_position: Option<Pos2>,
-        text: impl Into<egui::WidgetText>,
-    ) {
-        egui::containers::show_tooltip_at(
-            self.ctx(),
-            self.auto_id_with(id_source),
-            suggested_position,
-            |ui| {
-                ui.add(egui::Label::new(text));
-            },
         );
     }
 }

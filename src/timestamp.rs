@@ -46,7 +46,7 @@ impl fmt::Display for Timestamp {
             TimestampDisplay {
                 timestamp: *self,
                 units,
-                include_unit: true
+                include_units: true
             }
         )
     }
@@ -69,17 +69,17 @@ impl fmt::Display for Interval {
             TimestampDisplay {
                 timestamp: self.start,
                 units,
-                include_unit: false
+                include_units: false
             },
             TimestampDisplay {
                 timestamp: self.stop,
                 units,
-                include_unit: true
+                include_units: true
             },
             TimestampDisplay {
                 timestamp: duration,
                 units: duration_units,
-                include_unit: true
+                include_units: true
             }
         )
     }
@@ -231,7 +231,7 @@ impl From<Interval> for TimestampUnits {
 pub struct TimestampDisplay {
     pub timestamp: Timestamp,
     pub units: TimestampUnits,
-    pub include_unit: bool,
+    pub include_units: bool,
 }
 
 impl fmt::Display for TimestampDisplay {
@@ -260,7 +260,7 @@ impl fmt::Display for TimestampDisplay {
                 write!(f, " {r2:0>3}")?;
             }
         }
-        if self.include_unit {
+        if self.include_units {
             write!(f, " {unit_name}")?;
         }
         Ok(())
