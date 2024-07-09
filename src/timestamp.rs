@@ -39,32 +39,16 @@ impl Timestamp {
 
 impl fmt::Display for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Time is stored in nanoseconds. But display in larger units if possible.
-        let ns = self.0;
-        let ns_per_us = 1_000;
-        let ns_per_ms = 1_000_000;
-        let ns_per_s = 1_000_000_000;
-        let divisor;
-        let remainder_divisor;
-        let mut unit_name = "ns";
-        if ns >= ns_per_s {
-            divisor = ns_per_s;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "s";
-        } else if ns >= ns_per_ms {
-            divisor = ns_per_ms;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "ms";
-        } else if ns >= ns_per_us {
-            divisor = ns_per_us;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "us";
-        } else {
-            return write!(f, "{ns} {unit_name}");
-        }
-        let units = ns / divisor;
-        let remainder = (ns % divisor) / remainder_divisor;
-        write!(f, "{units}.{remainder:0>3} {unit_name}")
+        let units: TimestampUnits = (*self).into();
+        write!(
+            f,
+            "{}",
+            TimestampDisplay {
+                timestamp: *self,
+                units,
+                include_unit: true
+            }
+        )
     }
 }
 
@@ -76,50 +60,27 @@ pub struct Interval {
 
 impl fmt::Display for Interval {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Time is stored in nanoseconds. But display in larger units if possible.
-        let start_ns = self.start.0;
-        let stop_ns = self.stop.0;
-        let ns_per_us = 1_000;
-        let ns_per_ms = 1_000_000;
-        let ns_per_s = 1_000_000_000;
-        let divisor;
-        let remainder_divisor;
-        let mut unit_name = "ns";
-        if stop_ns >= ns_per_s {
-            divisor = ns_per_s;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "s";
-        } else if stop_ns >= ns_per_ms {
-            divisor = ns_per_ms;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "ms";
-        } else if stop_ns >= ns_per_us {
-            divisor = ns_per_us;
-            remainder_divisor = divisor / 1_000;
-            unit_name = "us";
-        } else {
-            return write!(
-                f,
-                "from {} to {} {} (duration: {})",
-                start_ns,
-                stop_ns,
-                unit_name,
-                Timestamp(self.duration_ns())
-            );
-        }
-        let start_units = start_ns / divisor;
-        let start_remainder = (start_ns % divisor) / remainder_divisor;
-        let stop_units = stop_ns / divisor;
-        let stop_remainder = (stop_ns % divisor) / remainder_divisor;
+        let units: TimestampUnits = (*self).into();
+        let duration = Timestamp(self.duration_ns());
+        let duration_units: TimestampUnits = duration.into();
         write!(
             f,
-            "from {}.{:0>3} to {}.{:0>3} {} (duration: {})",
-            start_units,
-            start_remainder,
-            stop_units,
-            stop_remainder,
-            unit_name,
-            Timestamp(self.duration_ns())
+            "from {} to {} (duration: {})",
+            TimestampDisplay {
+                timestamp: self.start,
+                units,
+                include_unit: false
+            },
+            TimestampDisplay {
+                timestamp: self.stop,
+                units,
+                include_unit: true
+            },
+            TimestampDisplay {
+                timestamp: duration,
+                units: duration_units,
+                include_unit: true
+            }
         )
     }
 }
@@ -176,11 +137,141 @@ impl Interval {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TimestampUnits {
+    divisor: i64,
+    digits_after_separator: i64,
+    unit_name: &'static str,
+}
+
+impl From<Timestamp> for TimestampUnits {
+    fn from(timestamp: Timestamp) -> TimestampUnits {
+        // Time is stored in nanoseconds. But display in larger units if possible.
+        let ns = timestamp.0;
+        const NS_PER_NS: i64 = 1;
+        const NS_PER_US: i64 = 1_000;
+        const NS_PER_MS: i64 = 1_000_000;
+        const NS_PER_S: i64 = 1_000_000_000;
+        let divisor;
+        let digits_after_separator;
+        let unit_name;
+        if ns >= NS_PER_S {
+            divisor = NS_PER_S;
+            digits_after_separator = 3;
+            unit_name = "s";
+        } else if ns >= NS_PER_MS {
+            divisor = NS_PER_MS;
+            digits_after_separator = 3;
+            unit_name = "ms";
+        } else if ns >= NS_PER_US {
+            divisor = NS_PER_US;
+            digits_after_separator = 3;
+            unit_name = "us";
+        } else {
+            divisor = NS_PER_NS;
+            digits_after_separator = 0;
+            unit_name = "ns";
+        }
+        TimestampUnits {
+            divisor,
+            digits_after_separator,
+            unit_name,
+        }
+    }
+}
+
+impl From<Interval> for TimestampUnits {
+    fn from(interval: Interval) -> TimestampUnits {
+        // Time is stored in nanoseconds. But display in larger units if possible.
+        let ns = interval.stop.0;
+        let duration = interval.duration_ns();
+        const NS_PER_NS: i64 = 1;
+        const NS_PER_US: i64 = 1_000;
+        const NS_PER_MS: i64 = 1_000_000;
+        const NS_PER_S: i64 = 1_000_000_000;
+        let divisor;
+        let digits_after_separator;
+        let unit_name;
+        if ns >= NS_PER_S {
+            divisor = NS_PER_S;
+            if duration >= NS_PER_MS {
+                digits_after_separator = 3;
+            } else if duration >= NS_PER_US {
+                digits_after_separator = 6;
+            } else {
+                digits_after_separator = 9;
+            }
+            unit_name = "s";
+        } else if ns >= NS_PER_MS {
+            divisor = NS_PER_MS;
+            if duration >= NS_PER_US {
+                digits_after_separator = 3;
+            } else {
+                digits_after_separator = 6;
+            }
+            unit_name = "ms";
+        } else if ns >= NS_PER_US {
+            divisor = NS_PER_US;
+            digits_after_separator = 3;
+            unit_name = "us";
+        } else {
+            divisor = NS_PER_NS;
+            digits_after_separator = 0;
+            unit_name = "ns";
+        }
+        TimestampUnits {
+            divisor,
+            digits_after_separator,
+            unit_name,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct TimestampDisplay {
+    pub timestamp: Timestamp,
+    pub units: TimestampUnits,
+    pub include_unit: bool,
+}
+
+impl fmt::Display for TimestampDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let TimestampUnits {
+            divisor,
+            unit_name,
+            digits_after_separator,
+        } = self.units;
+        let ns = self.timestamp.0;
+        let units = ns / divisor;
+        write!(f, "{units}")?;
+        if digits_after_separator > 0 {
+            write!(f, ".")?;
+            let remainder = ns % divisor;
+            if digits_after_separator >= 3 {
+                let r0 = remainder / (divisor / 1_000);
+                write!(f, "{r0:0>3}")?;
+            }
+            if digits_after_separator >= 6 {
+                let r1 = remainder / (divisor / 1_000_000) % 1_000;
+                write!(f, " {r1:0>3}")?;
+            }
+            if digits_after_separator >= 9 {
+                let r2 = remainder / (divisor / 1_000_000_000) % 1_000;
+                write!(f, " {r2:0>3}")?;
+            }
+        }
+        if self.include_unit {
+            write!(f, " {unit_name}")?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    mod timestamp {
+    mod timestamp_parse {
         use super::*;
 
         #[test]
@@ -413,6 +504,302 @@ mod tests {
 
             let expect = Interval::new(Timestamp(750), Timestamp(1750));
             assert_eq!(origin.translate(-250), expect);
+        }
+    }
+
+    mod timestamp_units_from_timestamp {
+        use super::*;
+
+        #[test]
+        fn test_s() {
+            let units: TimestampUnits = Timestamp(123_456_789_012).into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000_000,
+                    unit_name: "s",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_ms() {
+            let units: TimestampUnits = Timestamp(123_456_789).into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000,
+                    unit_name: "ms",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_us() {
+            let units: TimestampUnits = Timestamp(123_456).into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000,
+                    unit_name: "us",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_ns() {
+            let units: TimestampUnits = Timestamp(123).into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1,
+                    unit_name: "ns",
+                    digits_after_separator: 0
+                }
+            );
+        }
+    }
+
+    mod timestamp_units_from_interval {
+        use super::*;
+
+        #[test]
+        fn test_s() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456_789_012));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000_000,
+                    unit_name: "s",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_s_duration_ms() {
+            let i0 = Interval::new(Timestamp(123_000_000_000), Timestamp(123_456_789_012));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000_000,
+                    unit_name: "s",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_s_duration_us() {
+            let i0 = Interval::new(Timestamp(123_456_000_000), Timestamp(123_456_789_012));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000_000,
+                    unit_name: "s",
+                    digits_after_separator: 6
+                }
+            );
+        }
+
+        #[test]
+        fn test_s_duration_ns() {
+            let i0 = Interval::new(Timestamp(123_456_789_000), Timestamp(123_456_789_012));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000_000,
+                    unit_name: "s",
+                    digits_after_separator: 9
+                }
+            );
+        }
+
+        #[test]
+        fn test_ms() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456_789));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000,
+                    unit_name: "ms",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_ms_duration_us() {
+            let i0 = Interval::new(Timestamp(123_000_000), Timestamp(123_456_789));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000,
+                    unit_name: "ms",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_ms_duration_ns() {
+            let i0 = Interval::new(Timestamp(123_456_000), Timestamp(123_456_789));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000_000,
+                    unit_name: "ms",
+                    digits_after_separator: 6
+                }
+            );
+        }
+
+        #[test]
+        fn test_us() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1_000,
+                    unit_name: "us",
+                    digits_after_separator: 3
+                }
+            );
+        }
+
+        #[test]
+        fn test_ns() {
+            let i0 = Interval::new(Timestamp(123), Timestamp(456));
+            let units: TimestampUnits = i0.into();
+            assert_eq!(
+                units,
+                TimestampUnits {
+                    divisor: 1,
+                    unit_name: "ns",
+                    digits_after_separator: 0
+                }
+            );
+        }
+    }
+
+    mod timestamp_display {
+        use super::*;
+
+        #[test]
+        fn test_s() {
+            let t0 = Timestamp(123_456_789_012);
+            assert_eq!(&format!("{}", t0), "123.456 s");
+        }
+
+        #[test]
+        fn test_ms() {
+            let t0 = Timestamp(123_456_789);
+            assert_eq!(&format!("{}", t0), "123.456 ms");
+        }
+
+        #[test]
+        fn test_us() {
+            let t0 = Timestamp(123_456);
+            assert_eq!(&format!("{}", t0), "123.456 us");
+        }
+
+        #[test]
+        fn test_ns() {
+            let t0 = Timestamp(123);
+            assert_eq!(&format!("{}", t0), "123 ns");
+        }
+    }
+
+    mod interval_display {
+        use super::*;
+
+        #[test]
+        fn test_s() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456_789_012));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 0.000 to 123.456 s (duration: 123.456 s)"
+            );
+        }
+
+        #[test]
+        fn test_s_duration_ms() {
+            let i0 = Interval::new(Timestamp(123_000_000_000), Timestamp(123_456_789_012));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 123.000 to 123.456 s (duration: 456.789 ms)"
+            )
+        }
+
+        #[test]
+        fn test_s_duration_us() {
+            let i0 = Interval::new(Timestamp(123_456_000_000), Timestamp(123_456_789_012));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 123.456 000 to 123.456 789 s (duration: 789.012 us)"
+            );
+        }
+
+        #[test]
+        fn test_s_duration_ns() {
+            let i0 = Interval::new(Timestamp(123_456_789_000), Timestamp(123_456_789_012));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 123.456 789 000 to 123.456 789 012 s (duration: 12 ns)"
+            );
+        }
+
+        #[test]
+        fn test_ms() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456_789));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 0.000 to 123.456 ms (duration: 123.456 ms)"
+            );
+        }
+
+        #[test]
+        fn test_ms_duration_us() {
+            let i0 = Interval::new(Timestamp(123_000_000), Timestamp(123_456_789));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 123.000 to 123.456 ms (duration: 456.789 us)"
+            );
+        }
+
+        #[test]
+        fn test_ms_duration_ns() {
+            let i0 = Interval::new(Timestamp(123_456_000), Timestamp(123_456_789));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 123.456 000 to 123.456 789 ms (duration: 789 ns)"
+            );
+        }
+
+        #[test]
+        fn test_us() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123_456));
+            assert_eq!(
+                &format!("{}", i0),
+                "from 0.000 to 123.456 us (duration: 123.456 us)"
+            );
+        }
+
+        #[test]
+        fn test_ns() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(123));
+            assert_eq!(&format!("{}", i0), "from 0 to 123 ns (duration: 123 ns)");
         }
     }
 }
