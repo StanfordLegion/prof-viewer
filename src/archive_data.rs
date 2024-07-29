@@ -33,7 +33,7 @@ fn create_unique_dir<P: AsRef<Path>>(path: P, force: bool) -> io::Result<PathBuf
             let p = path.with_file_name(f);
             let r = create_dir(&p);
             if r.is_ok() {
-                path = p.as_path().to_owned();
+                path.clone_from(&p);
                 break;
             } else if i >= retry_limit {
                 // tried too many times, assume this is a permanent failure

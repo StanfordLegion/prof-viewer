@@ -1202,7 +1202,7 @@ impl SearchState {
         // Invalidate when the search query changes.
         if self.query != self.last_query {
             invalidate = true;
-            self.last_query = self.query.clone();
+            self.last_query.clone_from(&self.query);
         }
 
         // Invalidate when the search field changes.
@@ -2002,7 +2002,7 @@ impl ProfApp {
     }
 
     fn multiply_scale_factor(cx: &mut Context, factor: f32) {
-        cx.scale_factor = (cx.scale_factor * factor).min(4.0).max(0.25);
+        cx.scale_factor = (cx.scale_factor * factor).clamp(0.25, 4.0);
     }
 
     fn reset_scale_factor(cx: &mut Context) {
