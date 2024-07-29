@@ -2401,6 +2401,9 @@ impl ProfApp {
             return None;
         };
 
+        let font_id = TextStyle::Body.resolve(ui.style());
+        let row_height = ui.fonts(|f| f.row_height(&font_id));
+
         let mut result: Option<(ItemLocator, Interval)> = None;
         TableBuilder::new(ui)
             .striped(true)
@@ -2414,7 +2417,8 @@ impl ProfApp {
                     let width = body.widths()[1];
 
                     let ui = body.ui_mut();
-                    let height = Self::compute_field_height(field, width, cx.item_link_mode, ui);
+                    let height = Self::compute_field_height(field, width, cx.item_link_mode, ui)
+                        .max(row_height);
 
                     body.row(height, |mut row| {
                         row.col(|ui| {
