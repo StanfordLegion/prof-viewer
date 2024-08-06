@@ -2770,9 +2770,7 @@ impl UiExtra for egui::Ui {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
-    env_logger::try_init().unwrap_or(()); // Log to stderr (if you run with `RUST_LOG=debug`).
-
+fn get_locator(data_sources: &[Box<dyn DeferredDataSource>]) -> String {
     let all_locators = data_sources
         .iter()
         .flat_map(|x| x.fetch_description().source_locator)
@@ -2780,17 +2778,32 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
 
     let unique_locators = all_locators.into_iter().unique().collect_vec();
 
-    let locator = match &unique_locators[..] {
+    match &unique_locators[..] {
         [] => "No data source".to_string(),
         [x] => x.to_string(),
         [x, ..] => format!("{} and {} other sources", x, unique_locators.len() - 1),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
+    env_logger::try_init().unwrap_or(()); // Log to stderr (if you run with `RUST_LOG=debug`).
+
+    // IMPORTANT: This will be used as the directory name for the storage
+    // location for the persisted app.ron configuration. eframe is not good
+    // about sanitizing these directory names, so it is VERY IMPORTANT that
+    // this be a short, predictable name without weird characters in it.
+    let app_name = "Legion Prof";
+
+    // This is what will be displayed as the window's actual title.
+    let locator = format!("{} - {}", get_locator(&data_sources), app_name);
+
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_title(locator),
+        ..Default::default()
     };
-
-    let app_name = format!("{locator} - Legion Prof");
-
-    let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        &app_name,
+        app_name,
         native_options,
         Box::new(|cc| Box::new(ProfApp::new(cc, data_sources))),
     )
