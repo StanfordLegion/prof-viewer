@@ -4,9 +4,10 @@
 use egui::{Color32, NumExt};
 use rand::Rng;
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use legion_prof_viewer::data::{
-    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, EntryInfo, Field, FieldID,
+    DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
     FieldSchema, Item, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile, SlotTileData,
     SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
 };
@@ -69,14 +70,18 @@ impl ItemUIDGenerator {
     }
 }
 
-struct RandomDataSource {
-    info: DataSourceInfo,
-    item_uid_field: FieldID,
-    interval_field: FieldID,
+struct RandomState {
     summary_cache: BTreeMap<EntryID, Vec<UtilPoint>>,
     slot_cache: BTreeMap<EntryID, SlotCacheTile>,
     rng: rand::rngs::ThreadRng,
     item_uid_generator: ItemUIDGenerator,
+}
+
+struct RandomDataSource {
+    info: DataSourceInfo,
+    item_uid_field: FieldID,
+    interval_field: FieldID,
+    state: Mutex<RandomState>,
 }
 
 impl RandomDataSource {
@@ -95,14 +100,18 @@ impl RandomDataSource {
             warning_message: Some("Demo only. The data in this profile is synthetic.".to_string()),
         };
 
-        Self {
-            info,
-            item_uid_field,
-            interval_field,
+        let state = RandomState {
             summary_cache: BTreeMap::new(),
             slot_cache: BTreeMap::new(),
             rng,
             item_uid_generator: ItemUIDGenerator::default(),
+        };
+
+        Self {
+            info,
+            item_uid_field,
+            interval_field,
+            state: Mutex::new(state),
         }
     }
 
@@ -111,7 +120,7 @@ impl RandomDataSource {
     }
 
     fn generate_point(
-        &mut self,
+        rng: &mut rand::rngs::ThreadRng,
         first: UtilPoint,
         last: UtilPoint,
         level: i32,
@@ -120,41 +129,50 @@ impl RandomDataSource {
     ) {
         let time = Timestamp((first.time.0 + last.time.0) / 2);
         let util = (first.util + last.util) * 0.5;
-        let diff = (self.rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
+        let diff = (rng.gen::<f32>() - 0.5) / 1.2_f32.powi(max_level - level);
         let util = (util + diff).at_least(0.0).at_most(1.0);
         let point = UtilPoint { time, util };
         if level > 0 {
-            self.generate_point(first, point, level - 1, max_level, utilization);
+            Self::generate_point(rng, first, point, level - 1, max_level, utilization);
         }
         utilization.push(point);
         if level > 0 {
-            self.generate_point(point, last, level - 1, max_level, utilization);
+            Self::generate_point(rng, point, last, level - 1, max_level, utilization);
         }
     }
 
-    fn generate_summary(&mut self, entry_id: &EntryID) -> &Vec<UtilPoint> {
-        if !self.summary_cache.contains_key(entry_id) {
+    fn generate_summary(&self, entry_id: &EntryID) -> Vec<UtilPoint> {
+        let mut state = self.state.lock().unwrap();
+        if !state.summary_cache.contains_key(entry_id) {
             const LEVELS: i32 = 8;
             let first = UtilPoint {
                 time: self.info.interval.start,
-                util: self.rng.gen(),
+                util: state.rng.gen(),
             };
             let last = UtilPoint {
                 time: self.info.interval.stop,
-                util: self.rng.gen(),
+                util: state.rng.gen(),
             };
             let mut utilization = Vec::new();
             utilization.push(first);
-            self.generate_point(first, last, LEVELS, LEVELS, &mut utilization);
+            Self::generate_point(
+                &mut state.rng,
+                first,
+                last,
+                LEVELS,
+                LEVELS,
+                &mut utilization,
+            );
             utilization.push(last);
 
-            self.summary_cache.insert(entry_id.clone(), utilization);
+            state.summary_cache.insert(entry_id.clone(), utilization);
         }
-        self.summary_cache.get(entry_id).unwrap()
+        state.summary_cache.get(entry_id).unwrap().clone()
     }
 
-    fn generate_slot(&mut self, entry_id: &EntryID) -> &SlotCacheTile {
-        if !self.slot_cache.contains_key(entry_id) {
+    fn generate_slot(&self, entry_id: &EntryID) -> SlotCacheTile {
+        let mut state = self.state.lock().unwrap();
+        if !state.slot_cache.contains_key(entry_id) {
             let entry = self.info.entry_info.get(entry_id);
 
             let max_rows = if let EntryInfo::Slot { max_rows, .. } = entry.unwrap() {
@@ -184,7 +202,7 @@ impl RandomDataSource {
                         _ => Color32::WHITE,
                     };
 
-                    let item_uid = self.item_uid_generator.next();
+                    let item_uid = state.item_uid_generator.next();
                     row_items.push(Item {
                         item_uid,
                         interval: Interval::new(start, stop),
@@ -207,10 +225,11 @@ impl RandomDataSource {
                 item_metas.push(row_item_metas);
             }
 
-            self.slot_cache
+            state
+                .slot_cache
                 .insert(entry_id.clone(), (items, item_metas));
         }
-        self.slot_cache.get(entry_id).unwrap()
+        state.slot_cache.get(entry_id).unwrap().clone()
     }
 
     fn entry_info(rng: &mut rand::rngs::ThreadRng) -> EntryInfo {
@@ -268,28 +287,23 @@ impl RandomDataSource {
     }
 }
 
-impl DataSourceMut for RandomDataSource {
+impl DataSource for RandomDataSource {
     fn fetch_description(&self) -> DataSourceDescription {
         DataSourceDescription {
             source_locator: vec!["Random Data Source".to_string()],
         }
     }
-    fn fetch_info(&mut self) -> DataSourceInfo {
+    fn fetch_info(&self) -> DataSourceInfo {
         self.info.clone()
     }
 
-    fn fetch_summary_tile(
-        &mut self,
-        entry_id: &EntryID,
-        tile_id: TileID,
-        _full: bool,
-    ) -> SummaryTile {
+    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SummaryTile {
         let utilization = self.generate_summary(entry_id);
 
         let mut tile_utilization = Vec::new();
         let mut last_point = None;
         for point in utilization {
-            let UtilPoint { time, util } = *point;
+            let UtilPoint { time, util } = point;
             if let Some(last_point) = last_point {
                 let UtilPoint {
                     time: last_time,
@@ -306,7 +320,7 @@ impl DataSourceMut for RandomDataSource {
                     });
                 }
                 if tile_id.0.contains(time) {
-                    tile_utilization.push(*point);
+                    tile_utilization.push(point);
                 }
                 if last_interval.contains(tile_id.0.stop) {
                     let relative = last_interval.unlerp(tile_id.0.stop);
@@ -318,7 +332,7 @@ impl DataSourceMut for RandomDataSource {
                 }
             }
 
-            last_point = Some(*point);
+            last_point = Some(point);
         }
         SummaryTile {
             entry_id: entry_id.clone(),
@@ -329,7 +343,7 @@ impl DataSourceMut for RandomDataSource {
         }
     }
 
-    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTile {
+    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTile {
         let items = &self.generate_slot(entry_id).0;
 
         let mut slot_items = Vec::new();
@@ -355,21 +369,21 @@ impl DataSourceMut for RandomDataSource {
     }
 
     fn fetch_slot_meta_tile(
-        &mut self,
+        &self,
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
     ) -> SlotMetaTile {
-        let (items, item_metas) = &self.generate_slot(entry_id);
+        let (items, item_metas) = self.generate_slot(entry_id);
 
         let mut slot_items = Vec::new();
-        for (row, row_meta) in items.iter().zip(item_metas.iter()) {
+        for (row, row_meta) in items.iter().zip(item_metas.into_iter()) {
             let mut slot_row = Vec::new();
-            for (item, item_meta) in row.iter().zip(row_meta.iter()) {
+            for (item, item_meta) in row.iter().zip(row_meta.into_iter()) {
                 // When the item straddles a tile boundary, it has to be
                 // sliced to fit
                 if tile_id.0.overlaps(item.interval) {
-                    slot_row.push(item_meta.clone());
+                    slot_row.push(item_meta);
                 }
             }
             slot_items.push(slot_row);

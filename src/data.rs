@@ -221,52 +221,6 @@ pub trait DataSource {
         -> SlotMetaTile;
 }
 
-pub trait DataSourceMut {
-    fn fetch_description(&self) -> DataSourceDescription;
-    fn fetch_info(&mut self) -> DataSourceInfo;
-    fn fetch_summary_tile(
-        &mut self,
-        entry_id: &EntryID,
-        tile_id: TileID,
-        full: bool,
-    ) -> SummaryTile;
-    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTile;
-    fn fetch_slot_meta_tile(
-        &mut self,
-        entry_id: &EntryID,
-        tile_id: TileID,
-        full: bool,
-    ) -> SlotMetaTile;
-}
-
-impl<T: DataSource> DataSourceMut for T {
-    fn fetch_description(&self) -> DataSourceDescription {
-        DataSource::fetch_description(self)
-    }
-    fn fetch_info(&mut self) -> DataSourceInfo {
-        DataSource::fetch_info(self)
-    }
-    fn fetch_summary_tile(
-        &mut self,
-        entry_id: &EntryID,
-        tile_id: TileID,
-        full: bool,
-    ) -> SummaryTile {
-        DataSource::fetch_summary_tile(self, entry_id, tile_id, full)
-    }
-    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTile {
-        DataSource::fetch_slot_tile(self, entry_id, tile_id, full)
-    }
-    fn fetch_slot_meta_tile(
-        &mut self,
-        entry_id: &EntryID,
-        tile_id: TileID,
-        full: bool,
-    ) -> SlotMetaTile {
-        DataSource::fetch_slot_meta_tile(self, entry_id, tile_id, full)
-    }
-}
-
 impl EntryID {
     pub fn root() -> Self {
         Self(Vec::new())
