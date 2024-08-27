@@ -2436,7 +2436,11 @@ impl ProfApp {
 
                     body.row(height, |mut row| {
                         row.col(|ui| {
-                            ui.strong(k);
+                            if let Some(color) = color {
+                                ui.label(RichText::new(k).color(color).strong());
+                            } else {
+                                ui.strong(k);
+                            }
                         });
                         row.col(|ui| {
                             if let Some(x) =
