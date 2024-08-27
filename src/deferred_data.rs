@@ -1,5 +1,5 @@
 use crate::data::{
-    DataSourceDescription, DataSourceInfo, DataSourceMut, EntryID, SlotMetaTile, SlotTile,
+    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
     SummaryTile, TileID,
 };
 
@@ -15,7 +15,7 @@ pub trait DeferredDataSource {
     fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTile>;
 }
 
-pub struct DeferredDataSourceWrapper<T: DataSourceMut> {
+pub struct DeferredDataSourceWrapper<T: DataSource> {
     data_source: T,
     infos: Vec<DataSourceInfo>,
     summary_tiles: Vec<SummaryTile>,
@@ -23,7 +23,7 @@ pub struct DeferredDataSourceWrapper<T: DataSourceMut> {
     slot_meta_tiles: Vec<SlotMetaTile>,
 }
 
-impl<T: DataSourceMut> DeferredDataSourceWrapper<T> {
+impl<T: DataSource> DeferredDataSourceWrapper<T> {
     pub fn new(data_source: T) -> Self {
         Self {
             data_source,
@@ -35,7 +35,7 @@ impl<T: DataSourceMut> DeferredDataSourceWrapper<T> {
     }
 }
 
-impl<T: DataSourceMut> DeferredDataSource for DeferredDataSourceWrapper<T> {
+impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
     fn fetch_description(&self) -> DataSourceDescription {
         self.data_source.fetch_description()
     }
