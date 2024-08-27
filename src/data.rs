@@ -160,7 +160,7 @@ pub struct ItemMeta {
     // entire duration of the original item, unexpanded and unsliced.
     pub original_interval: Interval,
     pub title: String,
-    pub fields: Vec<(FieldID, Field)>,
+    pub fields: Vec<(FieldID, Field, Option<Color32>)>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]

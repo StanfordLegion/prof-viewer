@@ -744,9 +744,14 @@ impl Slot {
                     if cx.debug {
                         ui.label(format!("Item UID: {}", item_meta.item_uid.0));
                     }
-                    for (field_id, field) in &item_meta.fields {
+                    for (field_id, field, color) in &item_meta.fields {
                         let name = config.field_schema.get_name(*field_id).unwrap();
-                        ui.label(format!("{}", FieldWithName(name, field)));
+                        let text = format!("{}", FieldWithName(name, field));
+                        if let Some(color) = color {
+                            ui.label(RichText::new(text).color(*color));
+                        } else {
+                            ui.label(text);
+                        }
                     }
                     ui.label("(Click to show details.)");
                 });
@@ -1266,7 +1271,7 @@ impl SearchState {
         let field = self.search_field;
         if field == self.title_field {
             self.is_string_match(&item.title)
-        } else if let Some((_, value)) = item.fields.iter().find(|(x, _)| *x == field) {
+        } else if let Some((_, value, _)) = item.fields.iter().find(|(x, _, _)| *x == field) {
             self.is_field_match(value)
         } else {
             false
@@ -2339,16 +2344,25 @@ impl ProfApp {
 
     fn render_field_as_ui(
         field: &Field,
+        color: Option<Color32>,
         mode: ItemLinkNavigationMode,
         ui: &mut egui::Ui,
     ) -> Option<(ItemLocator, Interval)> {
         let mut result = None;
         let label = |ui: &mut egui::Ui, v| {
-            ui.add(egui::Label::new(v).wrap(true));
+            if let Some(color) = color {
+                ui.add(egui::Label::new(RichText::new(v).color(color)).wrap(true));
+            } else {
+                ui.add(egui::Label::new(v).wrap(true));
+            }
         };
         let label_button = |ui: &mut egui::Ui, v, b| {
             label(ui, v);
-            ui.button(b).clicked()
+            if let Some(color) = color {
+                ui.button(RichText::new(b).color(color)).clicked()
+            } else {
+                ui.button(b).clicked()
+            }
         };
         match field {
             Field::I64(value) => label(ui, &format!("{value}")),
@@ -2376,7 +2390,7 @@ impl ProfApp {
                 ui.vertical(|ui| {
                     for f in fields {
                         ui.horizontal(|ui| {
-                            if let Some(x) = Self::render_field_as_ui(f, mode, ui) {
+                            if let Some(x) = Self::render_field_as_ui(f, color, mode, ui) {
                                 result = Some(x);
                             }
                         });
@@ -2411,7 +2425,7 @@ impl ProfApp {
             .column(Column::auto())
             .column(Column::remainder())
             .body(|mut body| {
-                let mut show_row = |k: &str, field: &Field| {
+                let mut show_row = |k: &str, field: &Field, color: Option<Color32>| {
                     // We need to manually work out the height of the labels
                     // so that the table knows how large to make each row.
                     let width = body.widths()[1];
@@ -2425,7 +2439,8 @@ impl ProfApp {
                             ui.strong(k);
                         });
                         row.col(|ui| {
-                            if let Some(x) = Self::render_field_as_ui(field, cx.item_link_mode, ui)
+                            if let Some(x) =
+                                Self::render_field_as_ui(field, color, cx.item_link_mode, ui)
                             {
                                 result = Some(x);
                             }
@@ -2433,13 +2448,13 @@ impl ProfApp {
                     });
                 };
 
-                show_row("Title", &Field::String(item_meta.title.to_string()));
+                show_row("Title", &Field::String(item_meta.title.to_string()), None);
                 if cx.debug {
-                    show_row("Item UID", &Field::U64(item_meta.item_uid.0));
+                    show_row("Item UID", &Field::U64(item_meta.item_uid.0), None);
                 }
-                for (field_id, field) in &item_meta.fields {
+                for (field_id, field, color) in &item_meta.fields {
                     let name = field_schema.get_name(*field_id).unwrap();
-                    show_row(name, field);
+                    show_row(name, field, *color);
                 }
             });
         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {

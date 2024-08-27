@@ -180,7 +180,7 @@ impl MergeDeferredDataSource {
         for items in &mut tile.data.items {
             for item in items {
                 item.item_uid = self.map_src_to_dst_item_uid(idx, item.item_uid);
-                for (_, field) in &mut item.fields {
+                for (_, field, _) in &mut item.fields {
                     self.map_src_to_dst_field(idx, field);
                 }
             }
