@@ -36,6 +36,33 @@ jobs:
           command: check
           args: --all-features
 
+  check_mac:
+    name: Check macOS
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.74.1
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --no-default-features
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --no-default-features --features client
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --no-default-features --features server
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-features
+
   check_wasm:
     name: Check wasm32
     runs-on: ubuntu-latest
