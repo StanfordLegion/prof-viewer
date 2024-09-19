@@ -12,7 +12,12 @@ categories = ["development-tools::profiling"]
 license = "Apache-2.0"
 
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.77"
+
+# Required to ensure metadata is visible to dependents. See:
+# https://doc.rust-lang.org/cargo/reference/build-scripts.html
+# https://github.com/rust-lang/cargo/issues/7846
+links="legion_prof_viewer"
 
 [features]
 default = []
