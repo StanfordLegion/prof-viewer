@@ -205,6 +205,7 @@ pub struct SlotMetaTile {
     pub entry_id: EntryID,
     pub tile_id: TileID,
     pub data: SlotMetaTileData,
+    #[serde(default)]
     pub full: bool,
 }
 
