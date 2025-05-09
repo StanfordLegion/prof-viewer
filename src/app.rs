@@ -645,7 +645,7 @@ impl Slot {
             .or_insert_with(|| {
                 config
                     .data_source
-                    .fetch_slot_meta_tile(&self.entry_id, tile_id, false);
+                    .fetch_slot_meta_tile(&self.entry_id, tile_id, full);
                 None
             })
             .as_ref()
@@ -2564,8 +2564,12 @@ impl eframe::App for ProfApp {
                 if let Some(entry) = window.find_slot_mut(&tile.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
-                    entry
-                        .tile_metas
+                    let metas = if tile.full {
+                        &mut entry.tile_metas_full
+                    } else {
+                        &mut entry.tile_metas
+                    };
+                    metas
                         .entry(tile.tile_id)
                         .and_modify(|t| *t = Some(tile.data));
                 }
