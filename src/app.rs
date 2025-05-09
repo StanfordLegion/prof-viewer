@@ -1387,6 +1387,11 @@ impl Config {
             return self.request_tile_cache.clone();
         }
 
+        let request_duration = request_interval.duration_ns();
+        if request_duration <= 0 {
+            return Vec::new();
+        }
+
         if self.tile_set.tiles.is_empty() {
             // For dynamic profiles, just return the request as one tile.
             self.request_tile_cache = vec![TileID(request_interval)];
@@ -1395,7 +1400,6 @@ impl Config {
 
         // We're in a static profile. Estimate the best zoom level, where
         // "best" minimizes the ratio of the tile size to request size.
-        let request_duration = request_interval.duration_ns();
         let chosen_level = self
             .tile_set
             .tiles
