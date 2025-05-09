@@ -377,7 +377,7 @@ impl DataSource for RandomDataSource {
         &self,
         entry_id: &EntryID,
         tile_id: TileID,
-        _full: bool,
+        full: bool,
     ) -> SlotMetaTile {
         let (items, item_metas) = self.generate_slot(entry_id);
 
@@ -398,6 +398,7 @@ impl DataSource for RandomDataSource {
             entry_id: entry_id.clone(),
             tile_id,
             data: SlotMetaTileData { items: slot_items },
+            full,
         }
     }
 }

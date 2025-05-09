@@ -69,6 +69,7 @@ struct Slot {
     tile_ids: Vec<TileID>,
     tiles: BTreeMap<TileID, Option<SlotTileData>>,
     tile_metas: BTreeMap<TileID, Option<SlotMetaTileData>>,
+    tile_metas_full: BTreeMap<TileID, Option<SlotMetaTileData>>,
     last_view_interval: Option<Interval>,
 }
 
@@ -390,7 +391,7 @@ impl Summary {
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx.view_interval, false) {
             config
                 .data_source
                 .fetch_summary_tile(&self.entry_id, tile_id, false);
@@ -614,10 +615,11 @@ impl Slot {
         self.tile_ids.clear();
         self.tiles.clear();
         self.tile_metas.clear();
+        self.tile_metas_full.clear();
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
+        for tile_id in config.request_tiles(cx.view_interval, false) {
             config
                 .data_source
                 .fetch_slot_tile(&self.entry_id, tile_id, false);
@@ -630,8 +632,15 @@ impl Slot {
         &mut self,
         tile_id: TileID,
         config: &mut Config,
+        full: bool,
     ) -> Option<&SlotMetaTileData> {
-        self.tile_metas
+        let metas = if full {
+            &mut self.tile_metas_full
+        } else {
+            &mut self.tile_metas
+        };
+
+        metas
             .entry(tile_id)
             .or_insert_with(|| {
                 config
@@ -753,7 +762,7 @@ impl Slot {
         if let Some((row, item_idx, item_rect, tile_id)) = interact_item {
             // Hack: clone here  to avoid mutability conflict.
             let entry_id = self.entry_id.clone();
-            if let Some(tile_meta) = self.fetch_meta_tile(tile_id, config) {
+            if let Some(tile_meta) = self.fetch_meta_tile(tile_id, config, false) {
                 let item_meta = &tile_meta.items[row][item_idx];
                 ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
                     ui.label(&item_meta.title);
@@ -820,6 +829,7 @@ impl Entry for Slot {
                 tile_ids: Vec::new(),
                 tiles: BTreeMap::new(),
                 tile_metas: BTreeMap::new(),
+                tile_metas_full: BTreeMap::new(),
                 last_view_interval: None,
             }
         } else {
@@ -860,8 +870,8 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval) {
-            self.fetch_meta_tile(tile_id, config);
+        for tile_id in config.request_tiles(cx.view_interval, true) {
+            self.fetch_meta_tile(tile_id, config, true);
         }
     }
 
@@ -870,7 +880,7 @@ impl Entry for Slot {
             return;
         }
 
-        for (tile_id, tile) in &self.tile_metas {
+        for (tile_id, tile) in &self.tile_metas_full {
             if let Some(tile) = tile {
                 if !config.search_state.start_tile(self, *tile_id) {
                     continue;
@@ -1400,7 +1410,7 @@ impl Config {
         }
     }
 
-    fn request_tiles(&mut self, view_interval: Interval) -> Vec<TileID> {
+    fn request_tiles(&mut self, view_interval: Interval, full: bool) -> Vec<TileID> {
         let request_interval = view_interval.intersection(self.interval);
         if self.last_request_interval == Some(request_interval) {
             return self.request_tile_cache.clone();
@@ -1417,21 +1427,27 @@ impl Config {
             return self.request_tile_cache.clone();
         }
 
-        // We're in a static profile. Estimate the best zoom level, where
-        // "best" minimizes the ratio of the tile size to request size.
-        let chosen_level = self
-            .tile_set
-            .tiles
-            .iter()
-            .min_by_key(|level| {
-                let d = level.first().unwrap().0.duration_ns();
-                if d < request_duration {
-                    request_duration / d
-                } else {
-                    d / request_duration
-                }
-            })
-            .unwrap();
+        // We're in a static profile. Choose an appropriate level to load.
+        let chosen_level = if full {
+            // Full request must always fetch highest level of detail.
+            self.tile_set.tiles.last().unwrap()
+        } else {
+            // Otherwise estimate the best zoom level, where "best" minimizes the
+            // ratio of the tile size to request size.
+            let request_duration = request_interval.duration_ns();
+            self.tile_set
+                .tiles
+                .iter()
+                .min_by_key(|level| {
+                    let d = level.first().unwrap().0.duration_ns();
+                    if d < request_duration {
+                        request_duration / d
+                    } else {
+                        d / request_duration
+                    }
+                })
+                .unwrap()
+        };
 
         // Now filter to just tiles overlapping the requested interval.
         self.request_tile_cache = chosen_level

@@ -186,8 +186,7 @@ impl MergeDeferredDataSource {
 
         SlotMetaTile {
             entry_id: self.map_src_to_dst_entry(idx, &tile.entry_id),
-            tile_id: tile.tile_id,
-            data: tile.data,
+            ..tile
         }
     }
 }
