@@ -103,14 +103,26 @@ impl Interval {
     }
     pub fn intersection(self, other: Interval) -> Self {
         Self {
-            start: Timestamp(self.start.0.max(other.start.0)),
-            stop: Timestamp(self.stop.0.min(other.stop.0)),
+            start: self.start.max(other.start),
+            stop: self.stop.min(other.stop),
         }
     }
     pub fn union(self, other: Interval) -> Self {
         Self {
-            start: Timestamp(self.start.0.min(other.start.0)),
-            stop: Timestamp(self.stop.0.max(other.stop.0)),
+            start: self.start.min(other.start),
+            stop: self.stop.max(other.stop),
+        }
+    }
+    pub fn subtract_before(self, point: Timestamp) -> Self {
+        Self {
+            start: self.start.max(point),
+            stop: self.stop.max(point),
+        }
+    }
+    pub fn subtract_after(self, point: Timestamp) -> Self {
+        Self {
+            start: self.start.min(point),
+            stop: self.stop.min(point),
         }
     }
     // Convert a timestamp into [0,1] relative space
@@ -486,6 +498,46 @@ mod tests {
             let i1 = Interval::new(Timestamp(5), Timestamp(15));
             assert_eq!(i0.union(i1), Interval::new(Timestamp(0), Timestamp(15)));
             assert_eq!(i1.union(i0), Interval::new(Timestamp(0), Timestamp(15)));
+        }
+
+        #[test]
+        fn test_subtract_before() {
+            let p0 = Timestamp(0);
+            let p1 = Timestamp(10);
+            let p2 = Timestamp(20);
+            let i0 = Interval::new(Timestamp(5), Timestamp(15));
+            assert_eq!(
+                i0.subtract_before(p0),
+                Interval::new(Timestamp(5), Timestamp(15))
+            );
+            assert_eq!(
+                i0.subtract_before(p1),
+                Interval::new(Timestamp(10), Timestamp(15))
+            );
+            assert_eq!(
+                i0.subtract_before(p2),
+                Interval::new(Timestamp(20), Timestamp(20))
+            );
+        }
+
+        #[test]
+        fn test_subtract_after() {
+            let p0 = Timestamp(0);
+            let p1 = Timestamp(10);
+            let p2 = Timestamp(20);
+            let i0 = Interval::new(Timestamp(5), Timestamp(15));
+            assert_eq!(
+                i0.subtract_after(p0),
+                Interval::new(Timestamp(0), Timestamp(0))
+            );
+            assert_eq!(
+                i0.subtract_after(p1),
+                Interval::new(Timestamp(5), Timestamp(10))
+            );
+            assert_eq!(
+                i0.subtract_after(p2),
+                Interval::new(Timestamp(5), Timestamp(15))
+            );
         }
 
         #[test]

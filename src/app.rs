@@ -668,6 +668,9 @@ impl Slot {
             return hover_pos;
         }
 
+        // Figure out roughly how large a pixel is on the screen.
+        let pixel_ns = (cx.view_interval.duration_ns() as f32 / rect.width()) as i64;
+
         // Track which item, if any, we're interacting with
         let mut interact_item = None;
 
@@ -700,11 +703,27 @@ impl Slot {
                     continue;
                 }
 
+                // Expand interval to use at least one pixel, but do NOT
+                // overlap neighboring items.
+                let mut interval = item.interval;
+                if interval.duration_ns() < pixel_ns {
+                    let expand_ns = (pixel_ns - interval.duration_ns()) / 2;
+                    interval = interval.grow(expand_ns);
+                    if item_idx > 0 {
+                        let last_item = &row_items[item_idx - 1];
+                        interval = interval.subtract_before(last_item.interval.stop);
+                    }
+                    if item_idx < row_items.len() - 1 {
+                        let next_item = &row_items[item_idx + 1];
+                        interval = interval.subtract_after(next_item.interval.start);
+                    }
+                }
+
                 // Note: the interval is EXCLUSIVE. This turns out to be what
                 // we want here, because in screen coordinates interval.stop
                 // is the BEGINNING of the interval.stop nanosecond.
-                let start = cx.view_interval.unlerp(item.interval.start).at_least(0.0);
-                let stop = cx.view_interval.unlerp(item.interval.stop).at_most(1.0);
+                let start = cx.view_interval.unlerp(interval.start).at_least(0.0);
+                let stop = cx.view_interval.unlerp(interval.stop).at_most(1.0);
                 let min = rect.lerp_inside(Vec2::new(start, (irow as f32 + 0.05) / rows as f32));
                 let max = rect.lerp_inside(Vec2::new(stop, (irow as f32 + 0.95) / rows as f32));
 
