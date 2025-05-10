@@ -245,8 +245,11 @@ impl<T: DeferredDataSource> DeferredDataSource for LruDeferredDataSource<T> {
     }
 
     fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
-        self.summary_tiles
-            .extend(self.data_source.get_summary_tiles());
+        let result = self.data_source.get_summary_tiles();
+        for tile in &result {
+            self.summary_cache.put(tile.1.clone(), tile.clone());
+        }
+        self.summary_tiles.extend(result);
         std::mem::take(&mut self.summary_tiles)
     }
 
@@ -264,7 +267,11 @@ impl<T: DeferredDataSource> DeferredDataSource for LruDeferredDataSource<T> {
     }
 
     fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
-        self.slot_tiles.extend(self.data_source.get_slot_tiles());
+        let result = self.data_source.get_slot_tiles();
+        for tile in &result {
+            self.slot_cache.put(tile.1.clone(), tile.clone());
+        }
+        self.slot_tiles.extend(result);
         std::mem::take(&mut self.slot_tiles)
     }
 
@@ -283,8 +290,11 @@ impl<T: DeferredDataSource> DeferredDataSource for LruDeferredDataSource<T> {
     }
 
     fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
-        self.slot_meta_tiles
-            .extend(self.data_source.get_slot_meta_tiles());
+        let result = self.data_source.get_slot_meta_tiles();
+        for tile in &result {
+            self.slot_meta_cache.put(tile.1.clone(), tile.clone());
+        }
+        self.slot_meta_tiles.extend(result);
         std::mem::take(&mut self.slot_meta_tiles)
     }
 }
