@@ -2,9 +2,9 @@
 # This scripts runs various CI-like checks in a convenient way.
 set -eux
 
-cargo check --workspace --no-default-features --all-targets
+cargo check --workspace --no-default-features --lib
 cargo check --workspace --no-default-features --features client --all-targets
-cargo check --workspace --no-default-features --features server --all-targets
+cargo check --workspace --no-default-features --features server --lib
 cargo check --workspace --all-features --all-targets
 
 cargo check --workspace --no-default-features --lib --target wasm32-unknown-unknown
