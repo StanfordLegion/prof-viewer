@@ -2538,7 +2538,7 @@ impl eframe::App for ProfApp {
         }
 
         for window in windows.iter_mut() {
-            for tile in window.config.data_source.get_summary_tiles() {
+            for (tile, _) in window.config.data_source.get_summary_tiles() {
                 if let Some(entry) = window.find_summary_mut(&tile.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
@@ -2549,7 +2549,7 @@ impl eframe::App for ProfApp {
                 }
             }
 
-            for tile in window.config.data_source.get_slot_tiles() {
+            for (tile, _) in window.config.data_source.get_slot_tiles() {
                 if let Some(entry) = window.find_slot_mut(&tile.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
@@ -2560,11 +2560,11 @@ impl eframe::App for ProfApp {
                 }
             }
 
-            for tile in window.config.data_source.get_slot_meta_tiles() {
+            for (tile, full) in window.config.data_source.get_slot_meta_tiles() {
                 if let Some(entry) = window.find_slot_mut(&tile.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
-                    let metas = if tile.full {
+                    let metas = if full {
                         &mut entry.tile_metas_full
                     } else {
                         &mut entry.tile_metas

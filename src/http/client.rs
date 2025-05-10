@@ -24,9 +24,9 @@ pub struct HTTPClientDataSource {
     pub baseurl: Url,
     pub client: Client,
     infos: Arc<Mutex<Vec<DataSourceInfo>>>,
-    summary_tiles: Arc<Mutex<Vec<SummaryTile>>>,
-    slot_tiles: Arc<Mutex<Vec<SlotTile>>>,
-    slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTile>>>,
+    summary_tiles: Arc<Mutex<Vec<(SummaryTile, bool)>>>,
+    slot_tiles: Arc<Mutex<Vec<(SlotTile, bool)>>>,
+    slot_meta_tiles: Arc<Mutex<Vec<(SlotMetaTile, bool)>>>,
 }
 
 impl HTTPClientDataSource {
@@ -61,6 +61,28 @@ impl HTTPClientDataSource {
             },
         );
     }
+
+    fn request_extra<T, E>(&mut self, url: Url, container: Arc<Mutex<Vec<(T, E)>>>, extra: E)
+    where
+        T: 'static + Sync + Send + for<'a> Deserialize<'a>,
+        E: 'static + Sync + Send,
+    {
+        info!("fetch: {}", url);
+        let request = self
+            .client
+            .get(url)
+            .header("Accept", "*/*")
+            .header("Content-Type", "application/octet-stream;");
+        fetch(
+            request,
+            move |response: Result<DataSourceResponse, String>| {
+                let f = response.unwrap().body.reader();
+                let f = zstd::Decoder::new(f).expect("zstd decompression failed");
+                let result = ciborium::from_reader(f).expect("cbor decoding failed");
+                container.lock().unwrap().push((result, extra));
+            },
+        );
+    }
 }
 
 impl DeferredDataSource for HTTPClientDataSource {
@@ -87,10 +109,10 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request::<SummaryTile>(url, self.summary_tiles.clone());
+        self.request_extra::<SummaryTile, bool>(url, self.summary_tiles.clone(), full);
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<SummaryTile> {
+    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
         std::mem::take(&mut self.summary_tiles.lock().unwrap())
     }
 
@@ -102,10 +124,10 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request::<SlotTile>(url, self.slot_tiles.clone());
+        self.request_extra::<SlotTile, bool>(url, self.slot_tiles.clone(), full);
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<SlotTile> {
+    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
         std::mem::take(&mut self.slot_tiles.lock().unwrap())
     }
 
@@ -117,10 +139,10 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request::<SlotMetaTile>(url, self.slot_meta_tiles.clone());
+        self.request_extra::<SlotMetaTile, bool>(url, self.slot_meta_tiles.clone(), full);
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTile> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
         std::mem::take(&mut self.slot_meta_tiles.lock().unwrap())
     }
 }

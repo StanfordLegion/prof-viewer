@@ -9,9 +9,9 @@ use crate::deferred_data::DeferredDataSource;
 pub struct ParallelDeferredDataSource<T: DataSource + Send + Sync + 'static> {
     data_source: Arc<T>,
     infos: Arc<Mutex<Vec<DataSourceInfo>>>,
-    summary_tiles: Arc<Mutex<Vec<SummaryTile>>>,
-    slot_tiles: Arc<Mutex<Vec<SlotTile>>>,
-    slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTile>>>,
+    summary_tiles: Arc<Mutex<Vec<(SummaryTile, bool)>>>,
+    slot_tiles: Arc<Mutex<Vec<(SlotTile, bool)>>>,
+    slot_meta_tiles: Arc<Mutex<Vec<(SlotMetaTile, bool)>>>,
 }
 
 impl<T: DataSource + Send + Sync + 'static> ParallelDeferredDataSource<T> {
@@ -50,11 +50,11 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
         let summary_tiles = self.summary_tiles.clone();
         rayon::spawn(move || {
             let result = data_source.fetch_summary_tile(&entry_id, tile_id, full);
-            summary_tiles.lock().unwrap().push(result);
+            summary_tiles.lock().unwrap().push((result, full));
         });
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<SummaryTile> {
+    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
         std::mem::take(&mut self.summary_tiles.lock().unwrap())
     }
 
@@ -64,11 +64,11 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
         let slot_tiles = self.slot_tiles.clone();
         rayon::spawn(move || {
             let result = data_source.fetch_slot_tile(&entry_id, tile_id, full);
-            slot_tiles.lock().unwrap().push(result);
+            slot_tiles.lock().unwrap().push((result, full));
         });
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<SlotTile> {
+    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
         std::mem::take(&mut self.slot_tiles.lock().unwrap())
     }
 
@@ -78,11 +78,11 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
         let slot_meta_tiles = self.slot_meta_tiles.clone();
         rayon::spawn(move || {
             let result = data_source.fetch_slot_meta_tile(&entry_id, tile_id, full);
-            slot_meta_tiles.lock().unwrap().push(result);
+            slot_meta_tiles.lock().unwrap().push((result, full));
         });
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTile> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
         std::mem::take(&mut self.slot_meta_tiles.lock().unwrap())
     }
 }

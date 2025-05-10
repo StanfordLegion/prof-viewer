@@ -138,8 +138,7 @@ impl MergeDeferredDataSource {
     fn map_src_to_dst_summary(&self, idx: usize, tile: SummaryTile) -> SummaryTile {
         SummaryTile {
             entry_id: self.map_src_to_dst_entry(idx, &tile.entry_id),
-            tile_id: tile.tile_id,
-            data: tile.data,
+            ..tile
         }
     }
 
@@ -152,8 +151,7 @@ impl MergeDeferredDataSource {
 
         SlotTile {
             entry_id: self.map_src_to_dst_entry(idx, &tile.entry_id),
-            tile_id: tile.tile_id,
-            data: tile.data,
+            ..tile
         }
     }
 
@@ -234,7 +232,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         self.data_sources[idx].fetch_summary_tile(&src_entry, tile_id, full);
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<SummaryTile> {
+    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
         let mut tiles = Vec::new();
         for (idx, data_source) in self.data_sources.iter_mut().enumerate() {
             tiles.extend(
@@ -248,7 +246,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         // Hack: doing this in two stages to avoid mutability conflict
         tiles
             .into_iter()
-            .map(|(idx, tile)| self.map_src_to_dst_summary(idx, tile))
+            .map(|(idx, (tile, full))| (self.map_src_to_dst_summary(idx, tile), full))
             .collect()
     }
 
@@ -258,7 +256,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         self.data_sources[idx].fetch_slot_tile(&src_entry, tile_id, full);
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<SlotTile> {
+    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
         let mut tiles = Vec::new();
         for (idx, data_source) in self.data_sources.iter_mut().enumerate() {
             tiles.extend(
@@ -272,7 +270,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         // Hack: doing this in two stages to avoid mutability conflict
         tiles
             .into_iter()
-            .map(|(idx, tile)| self.map_src_to_dst_slot(idx, tile))
+            .map(|(idx, (tile, full))| (self.map_src_to_dst_slot(idx, tile), full))
             .collect()
     }
 
@@ -282,7 +280,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         self.data_sources[idx].fetch_slot_meta_tile(&src_entry, tile_id, full);
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTile> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
         let mut tiles = Vec::new();
         for (idx, data_source) in self.data_sources.iter_mut().enumerate() {
             tiles.extend(
@@ -296,7 +294,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         // Hack: doing this in two stages to avoid mutability conflict
         tiles
             .into_iter()
-            .map(|(idx, tile)| self.map_src_to_dst_slot_meta(idx, tile))
+            .map(|(idx, (tile, full))| (self.map_src_to_dst_slot_meta(idx, tile), full))
             .collect()
     }
 }
