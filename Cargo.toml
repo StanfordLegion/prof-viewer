@@ -15,7 +15,7 @@ edition = "2024"
 rust-version = "1.85"
 
 [features]
-default = []
+default = ["client"]
 client = ["dep:reqwest", "dep:url"]
 server = ["dep:actix-cors", "dep:actix-web"]
 nvtxw = ["dep:nvtxw"]
@@ -36,10 +36,6 @@ ciborium = { version = "0.2" }
 zstd = { version = "0.13", default-features = false }
 
 bytes = "1" # for reqwest binary data
-
-rand = { version = "0.8" }
-# transitive depedency, required for rand to support wasm
-getrandom = { version = "0.2", features = ["js"] }
 
 itertools = "0.14.0"
 lru = "0.14"
@@ -70,6 +66,12 @@ reqwest = { version = "0.12", features = [], optional = true }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["Window", "Document", "Location"] }
+
+# examples:
+[dev-dependencies]
+rand = { version = "0.8" }
+# transitive depedency, required for rand to support wasm
+getrandom = { version = "0.2", features = ["js"] }
 
 
 [profile.release]

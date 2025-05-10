@@ -22,19 +22,19 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features
+          args: --no-default-features --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --features client
+          args: --no-default-features --features client --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --features server
+          args: --no-default-features --features server --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-features
+          args: --all-features --all-targets
 
   check_mac:
     name: Check macOS
@@ -49,19 +49,19 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features
+          args: --no-default-features --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --features client
+          args: --no-default-features --features client --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --features server
+          args: --no-default-features --features server --all-targets
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-features
+          args: --all-features --all-targets
 
   check_wasm:
     name: Check wasm32
@@ -129,7 +129,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-features -- -D warnings
+          args: --all-features --all-targets -- -D warnings
 
   trunk:
     name: Trunk
