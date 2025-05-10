@@ -1,8 +1,13 @@
+use std::num::NonZeroUsize;
+
+use lru::LruCache;
+
 use crate::data::{
     DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
     SummaryTile, TileID,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TileRequest {
     pub entry_id: EntryID,
     pub tile_id: TileID,
@@ -186,6 +191,101 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
     fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
         let result = self.data_source.get_slot_meta_tiles();
         self.finish_request(result)
+    }
+}
+
+pub struct LruDeferredDataSource<T: DeferredDataSource> {
+    data_source: T,
+    summary_cache: LruCache<TileRequest, SummaryTileResponse>,
+    slot_cache: LruCache<TileRequest, SlotTileResponse>,
+    slot_meta_cache: LruCache<TileRequest, SlotMetaTileResponse>,
+    summary_tiles: Vec<SummaryTileResponse>,
+    slot_tiles: Vec<SlotTileResponse>,
+    slot_meta_tiles: Vec<SlotMetaTileResponse>,
+}
+
+impl<T: DeferredDataSource> LruDeferredDataSource<T> {
+    pub fn new(data_source: T, capacity: NonZeroUsize) -> Self {
+        Self {
+            data_source,
+            summary_cache: LruCache::new(capacity),
+            slot_cache: LruCache::new(capacity),
+            slot_meta_cache: LruCache::new(capacity),
+            summary_tiles: Vec::new(),
+            slot_tiles: Vec::new(),
+            slot_meta_tiles: Vec::new(),
+        }
+    }
+}
+
+impl<T: DeferredDataSource> DeferredDataSource for LruDeferredDataSource<T> {
+    fn fetch_description(&self) -> DataSourceDescription {
+        self.data_source.fetch_description()
+    }
+
+    fn fetch_info(&mut self) {
+        self.data_source.fetch_info()
+    }
+
+    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+        self.data_source.get_infos()
+    }
+
+    fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
+        let req = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        if let Some(tile) = self.summary_cache.get(&req) {
+            self.summary_tiles.push(tile.clone());
+        } else {
+            self.data_source.fetch_summary_tile(entry_id, tile_id, full);
+        }
+    }
+
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
+        self.summary_tiles
+            .extend(self.data_source.get_summary_tiles());
+        std::mem::take(&mut self.summary_tiles)
+    }
+
+    fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
+        let req = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        if let Some(tile) = self.slot_cache.get(&req) {
+            self.slot_tiles.push(tile.clone());
+        } else {
+            self.data_source.fetch_slot_tile(entry_id, tile_id, full);
+        }
+    }
+
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
+        self.slot_tiles.extend(self.data_source.get_slot_tiles());
+        std::mem::take(&mut self.slot_tiles)
+    }
+
+    fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
+        let req = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        if let Some(tile) = self.slot_meta_cache.get(&req) {
+            self.slot_meta_tiles.push(tile.clone());
+        } else {
+            self.data_source
+                .fetch_slot_meta_tile(entry_id, tile_id, full);
+        }
+    }
+
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
+        self.slot_meta_tiles
+            .extend(self.data_source.get_slot_meta_tiles());
+        std::mem::take(&mut self.slot_meta_tiles)
     }
 }
 
