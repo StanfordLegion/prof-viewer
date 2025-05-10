@@ -9,14 +9,8 @@ const DEFAULT_URL: &str = "http://127.0.0.1:8080";
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let url = Url::parse(
-        std::env::args()
-            .skip(1)
-            .next()
-            .as_deref()
-            .unwrap_or(DEFAULT_URL),
-    )
-    .expect("unable to parse URL");
+    let url = Url::parse(std::env::args().nth(1).as_deref().unwrap_or(DEFAULT_URL))
+        .expect("unable to parse URL");
 
     legion_prof_viewer::app::start(vec![Box::new(HTTPClientDataSource::new(url))]);
 }
