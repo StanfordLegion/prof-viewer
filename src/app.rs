@@ -8,6 +8,7 @@ use egui::{Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, Te
 use egui_extras::{Column, TableBuilder};
 #[cfg(not(target_arch = "wasm32"))]
 use itertools::Itertools;
+use log::warn;
 use percentage::{Percentage, PercentageInteger};
 use regex::{Regex, escape};
 use serde::{Deserialize, Serialize};
@@ -509,10 +510,14 @@ impl Entry for Summary {
         let mut last_point: Option<Pos2> = None;
         let mut hover_util = None;
         for tile in self.tiles.values().flatten() {
-            let Ok(tile) = tile else {
-                // Paint the entire tile red to indicate the error.
-                ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
-                return;
+            let tile = match tile {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!("{}", e);
+                    // Paint the entire tile red to indicate the error.
+                    ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
+                    return;
+                }
             };
 
             for util in &tile.utilization {
@@ -687,10 +692,14 @@ impl Slot {
         }
         let tile = tile.as_ref().unwrap();
 
-        let Ok(tile) = tile else {
-            // Paint the entire tile red to indicate the error.
-            ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
-            return hover_pos;
+        let tile = match tile {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("{}", e);
+                // Paint the entire tile red to indicate the error.
+                ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
+                return hover_pos;
+            }
         };
 
         if !cx.view_interval.overlaps(tile_id.0) {
@@ -786,6 +795,7 @@ impl Slot {
                 let tile_meta = match tile_meta {
                     Ok(t) => t,
                     Err(e) => {
+                        warn!("{}", e);
                         ui.show_tooltip("task_tooltip", &item_rect, e);
                         return hover_pos;
                     }
