@@ -4,9 +4,7 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use egui::{
-    Align2, Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2,
-};
+use egui::{Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use egui_extras::{Column, TableBuilder};
 #[cfg(not(target_arch = "wasm32"))]
 use itertools::Itertools;
@@ -352,13 +350,15 @@ trait Entry {
 
         ui.painter()
             .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
-        ui.painter().text(
-            rect.min + style.spacing.item_spacing * Vec2::new(1.0, cx.scale_factor),
-            Align2::LEFT_TOP,
-            self.label_text(),
+        let spacing = style.spacing.item_spacing * Vec2::new(1.0, cx.scale_factor);
+        let layout = ui.painter().layout(
+            self.label_text().to_owned(),
             font_id,
             visuals.text_color(),
+            rect.width() - spacing.x * 2.0,
         );
+        ui.painter()
+            .galley(rect.min + spacing, layout, visuals.text_color());
 
         if response.clicked() {
             // This will take effect next frame because we can't redraw this widget now
