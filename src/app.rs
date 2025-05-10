@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -17,7 +18,9 @@ use crate::data::{
     DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemLink,
     ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, TileSet, UtilPoint,
 };
-use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, TileResult};
+use crate::deferred_data::{
+    CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource, TileResult,
+};
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };
@@ -165,7 +168,7 @@ struct Config {
     tile_set: TileSet,
     warning_message: Option<String>,
 
-    data_source: CountingDeferredDataSource<Box<dyn DeferredDataSource>>,
+    data_source: CountingDeferredDataSource<LruDeferredDataSource<Box<dyn DeferredDataSource>>>,
 
     search_state: SearchState,
 
@@ -1438,7 +1441,10 @@ impl Config {
             interval,
             tile_set,
             warning_message,
-            data_source: CountingDeferredDataSource::new(data_source),
+            data_source: CountingDeferredDataSource::new(LruDeferredDataSource::new(
+                data_source,
+                NonZeroUsize::new(1024).unwrap(),
+            )),
             search_state,
             items_selected: BTreeMap::new(),
             scroll_to_item: None,
