@@ -22,6 +22,7 @@ use crate::deferred_data::{
 };
 use crate::http::fetch::{DataSourceResponse, fetch};
 use crate::http::schema::TileRequestRef;
+use crate::http::url::ensure_directory;
 
 pub struct HTTPClientDataSource {
     pub baseurl: Url,
@@ -35,7 +36,7 @@ pub struct HTTPClientDataSource {
 impl HTTPClientDataSource {
     pub fn new(baseurl: Url) -> Self {
         Self {
-            baseurl,
+            baseurl: ensure_directory(&baseurl),
             client: ClientBuilder::new().build().unwrap(),
             infos: Arc::new(Mutex::new(Vec::new())),
             summary_tiles: Arc::new(Mutex::new(Vec::new())),

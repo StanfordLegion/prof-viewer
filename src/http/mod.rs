@@ -12,3 +12,5 @@ pub mod fetch;
 pub mod fetch_native;
 #[cfg(all(feature = "client", target_arch = "wasm32"))]
 pub mod fetch_web;
+#[cfg(feature = "client")]
+pub mod url;
