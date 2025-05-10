@@ -390,6 +390,13 @@ impl Summary {
         self.tiles.clear();
     }
 
+    fn validate(&mut self, cx: &Context) {
+        if self.last_view_interval != Some(cx.view_interval) {
+            self.clear();
+        }
+        self.last_view_interval = Some(cx.view_interval);
+    }
+
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
         for tile_id in config.request_tiles(cx.view_interval, false) {
             config
@@ -464,10 +471,7 @@ impl Entry for Summary {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
-        if self.last_view_interval != Some(cx.view_interval) {
-            self.clear();
-        }
-        self.last_view_interval = Some(cx.view_interval);
+        self.validate(cx);
         if self.tiles.is_empty() {
             self.inflate(config, cx);
         }
@@ -616,6 +620,13 @@ impl Slot {
         self.tiles.clear();
         self.tile_metas.clear();
         self.tile_metas_full.clear();
+    }
+
+    fn validate(&mut self, cx: &Context) {
+        if self.last_view_interval != Some(cx.view_interval) {
+            self.clear();
+        }
+        self.last_view_interval = Some(cx.view_interval);
     }
 
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
@@ -870,6 +881,7 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
+        self.validate(cx);
         for tile_id in config.request_tiles(cx.view_interval, true) {
             self.fetch_meta_tile(tile_id, config, true);
         }
@@ -913,10 +925,7 @@ impl Entry for Slot {
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
-            if self.last_view_interval != Some(cx.view_interval) {
-                self.clear();
-            }
-            self.last_view_interval = Some(cx.view_interval);
+            self.validate(cx);
             if self.tiles.is_empty() {
                 self.inflate(config, cx);
             }
