@@ -122,6 +122,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
     fn write_summary_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_summary_tiles() {
+            let tile = tile.expect("writing summary tile failed");
             let mut path = self.path.join("summary_tile");
             let req = TileRequestRef {
                 entry_id: &tile.entry_id,
@@ -134,6 +135,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
     fn write_slot_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_slot_tiles() {
+            let tile = tile.expect("writing slot tile failed");
             let mut path = self.path.join("slot_tile");
             let req = TileRequestRef {
                 entry_id: &tile.entry_id,
@@ -146,6 +148,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
     fn write_slot_meta_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_slot_meta_tiles() {
+            let tile = tile.expect("writing slot meta tile failed");
             let mut path = self.path.join("slot_meta_tile");
             let req = TileRequestRef {
                 entry_id: &tile.entry_id,

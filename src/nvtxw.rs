@@ -193,11 +193,13 @@ impl<T: DeferredDataSource> NVTXW<T> {
             let slot_meta_tiles = data_source.get_slot_meta_tiles();
 
             for (tile, _) in slot_tiles {
+                let tile = tile.expect("writing slot tile failed");
                 let e = tile.entry_id.clone();
                 unmatched_tiles.entry(e).or_insert((None, None)).0 = Some(tile);
             }
 
             for (meta_tile, _) in slot_meta_tiles {
+                let meta_tile = meta_tile.expect("writing slot meta tile failed");
                 let e = meta_tile.entry_id.clone();
                 unmatched_tiles.entry(e).or_insert((None, None)).1 = Some(meta_tile);
             }

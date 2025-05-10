@@ -3,24 +3,41 @@ use crate::data::{
     SummaryTile, TileID,
 };
 
+pub struct TileRequest {
+    pub entry_id: EntryID,
+    pub tile_id: TileID,
+    pub full: bool,
+}
+
+pub type TileResult<T> = Result<T, String>;
+pub type TileResponse<T> = (TileResult<T>, TileRequest);
+
+pub type SummaryTileResult = TileResult<SummaryTile>;
+pub type SlotTileResult = TileResult<SlotTile>;
+pub type SlotMetaTileResult = TileResult<SlotMetaTile>;
+
+pub type SummaryTileResponse = TileResponse<SummaryTile>;
+pub type SlotTileResponse = TileResponse<SlotTile>;
+pub type SlotMetaTileResponse = TileResponse<SlotMetaTile>;
+
 pub trait DeferredDataSource {
     fn fetch_description(&self) -> DataSourceDescription;
     fn fetch_info(&mut self);
     fn get_infos(&mut self) -> Vec<DataSourceInfo>;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
-    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)>;
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse>;
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
-    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)>;
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse>;
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
-    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)>;
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse>;
 }
 
 pub struct DeferredDataSourceWrapper<T: DataSource> {
     data_source: T,
     infos: Vec<DataSourceInfo>,
-    summary_tiles: Vec<(SummaryTile, bool)>,
-    slot_tiles: Vec<(SlotTile, bool)>,
-    slot_meta_tiles: Vec<(SlotMetaTile, bool)>,
+    summary_tiles: Vec<SummaryTileResponse>,
+    slot_tiles: Vec<SlotTileResponse>,
+    slot_meta_tiles: Vec<SlotMetaTileResponse>,
 }
 
 impl<T: DataSource> DeferredDataSourceWrapper<T> {
@@ -50,35 +67,48 @@ impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.summary_tiles.push((
-            self.data_source.fetch_summary_tile(entry_id, tile_id, full),
-            full,
+            Ok(self.data_source.fetch_summary_tile(entry_id, tile_id, full)),
+            TileRequest {
+                entry_id: entry_id.clone(),
+                tile_id,
+                full,
+            },
         ));
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
         std::mem::take(&mut self.summary_tiles)
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.slot_tiles.push((
-            self.data_source.fetch_slot_tile(entry_id, tile_id, full),
-            full,
+            Ok(self.data_source.fetch_slot_tile(entry_id, tile_id, full)),
+            TileRequest {
+                entry_id: entry_id.clone(),
+                tile_id,
+                full,
+            },
         ));
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
         std::mem::take(&mut self.slot_tiles)
     }
 
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.slot_meta_tiles.push((
-            self.data_source
-                .fetch_slot_meta_tile(entry_id, tile_id, full),
-            full,
+            Ok(self
+                .data_source
+                .fetch_slot_meta_tile(entry_id, tile_id, full)),
+            TileRequest {
+                entry_id: entry_id.clone(),
+                tile_id,
+                full,
+            },
         ));
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
         std::mem::take(&mut self.slot_meta_tiles)
     }
 }
@@ -132,7 +162,7 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
         self.data_source.fetch_summary_tile(entry_id, tile_id, full)
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
         let result = self.data_source.get_summary_tiles();
         self.finish_request(result)
     }
@@ -142,7 +172,7 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
         self.data_source.fetch_slot_tile(entry_id, tile_id, full)
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
         let result = self.data_source.get_slot_tiles();
         self.finish_request(result)
     }
@@ -153,7 +183,7 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
             .fetch_slot_meta_tile(entry_id, tile_id, full)
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
         let result = self.data_source.get_slot_meta_tiles();
         self.finish_request(result)
     }
@@ -176,7 +206,7 @@ impl DeferredDataSource for Box<dyn DeferredDataSource> {
         self.as_mut().fetch_summary_tile(entry_id, tile_id, full)
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
         self.as_mut().get_summary_tiles()
     }
 
@@ -184,7 +214,7 @@ impl DeferredDataSource for Box<dyn DeferredDataSource> {
         self.as_mut().fetch_slot_tile(entry_id, tile_id, full)
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
         self.as_mut().get_slot_tiles()
     }
 
@@ -192,7 +222,7 @@ impl DeferredDataSource for Box<dyn DeferredDataSource> {
         self.as_mut().fetch_slot_meta_tile(entry_id, tile_id, full)
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
         self.as_mut().get_slot_meta_tiles()
     }
 }

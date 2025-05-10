@@ -16,7 +16,10 @@ use url::Url;
 use crate::data::{
     DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
-use crate::deferred_data::DeferredDataSource;
+use crate::deferred_data::{
+    DeferredDataSource, SlotMetaTileResponse, SlotTileResponse, SummaryTileResponse, TileRequest,
+    TileResponse,
+};
 use crate::http::fetch::{DataSourceResponse, fetch};
 use crate::http::schema::TileRequestRef;
 
@@ -24,9 +27,9 @@ pub struct HTTPClientDataSource {
     pub baseurl: Url,
     pub client: Client,
     infos: Arc<Mutex<Vec<DataSourceInfo>>>,
-    summary_tiles: Arc<Mutex<Vec<(SummaryTile, bool)>>>,
-    slot_tiles: Arc<Mutex<Vec<(SlotTile, bool)>>>,
-    slot_meta_tiles: Arc<Mutex<Vec<(SlotMetaTile, bool)>>>,
+    summary_tiles: Arc<Mutex<Vec<SummaryTileResponse>>>,
+    slot_tiles: Arc<Mutex<Vec<SlotTileResponse>>>,
+    slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTileResponse>>>,
 }
 
 impl HTTPClientDataSource {
@@ -62,10 +65,13 @@ impl HTTPClientDataSource {
         );
     }
 
-    fn request_extra<T, E>(&mut self, url: Url, container: Arc<Mutex<Vec<(T, E)>>>, extra: E)
-    where
+    fn request_extra<T>(
+        &mut self,
+        url: Url,
+        container: Arc<Mutex<Vec<TileResponse<T>>>>,
+        extra: TileRequest,
+    ) where
         T: 'static + Sync + Send + for<'a> Deserialize<'a>,
-        E: 'static + Sync + Send,
     {
         info!("fetch: {}", url);
         let request = self
@@ -76,9 +82,9 @@ impl HTTPClientDataSource {
         fetch(
             request,
             move |response: Result<DataSourceResponse, String>| {
-                let f = response.unwrap().body.reader();
-                let f = zstd::Decoder::new(f).expect("zstd decompression failed");
-                let result = ciborium::from_reader(f).expect("cbor decoding failed");
+                let result = response
+                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|x| x.to_string()))
+                    .and_then(|f| ciborium::from_reader(f).map_err(|x| x.to_string()));
                 container.lock().unwrap().push((result, extra));
             },
         );
@@ -109,10 +115,15 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request_extra::<SummaryTile, bool>(url, self.summary_tiles.clone(), full);
+        let extra = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        self.request_extra::<SummaryTile>(url, self.summary_tiles.clone(), extra);
     }
 
-    fn get_summary_tiles(&mut self) -> Vec<(SummaryTile, bool)> {
+    fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse> {
         std::mem::take(&mut self.summary_tiles.lock().unwrap())
     }
 
@@ -124,10 +135,15 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request_extra::<SlotTile, bool>(url, self.slot_tiles.clone(), full);
+        let extra = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        self.request_extra::<SlotTile>(url, self.slot_tiles.clone(), extra);
     }
 
-    fn get_slot_tiles(&mut self) -> Vec<(SlotTile, bool)> {
+    fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
         std::mem::take(&mut self.slot_tiles.lock().unwrap())
     }
 
@@ -139,10 +155,15 @@ impl DeferredDataSource for HTTPClientDataSource {
             .and_then(|u| u.join(&req.to_slug()))
             .expect("invalid baseurl");
         url.set_query(Some(&format!("full={}", full)));
-        self.request_extra::<SlotMetaTile, bool>(url, self.slot_meta_tiles.clone(), full);
+        let extra = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        self.request_extra::<SlotMetaTile>(url, self.slot_meta_tiles.clone(), extra);
     }
 
-    fn get_slot_meta_tiles(&mut self) -> Vec<(SlotMetaTile, bool)> {
+    fn get_slot_meta_tiles(&mut self) -> Vec<SlotMetaTileResponse> {
         std::mem::take(&mut self.slot_meta_tiles.lock().unwrap())
     }
 }

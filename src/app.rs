@@ -16,7 +16,7 @@ use crate::data::{
     DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemLink,
     ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, TileSet, UtilPoint,
 };
-use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
+use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, TileResult};
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };
@@ -55,7 +55,7 @@ use crate::timestamp::{
 struct Summary {
     entry_id: EntryID,
     color: Color32,
-    tiles: BTreeMap<TileID, Option<SummaryTileData>>,
+    tiles: BTreeMap<TileID, Option<TileResult<SummaryTileData>>>,
     last_view_interval: Option<Interval>,
 }
 
@@ -67,9 +67,17 @@ struct Slot {
     expanded: bool,
     max_rows: u64,
     tile_ids: Vec<TileID>,
-    tiles: BTreeMap<TileID, Option<SlotTileData>>,
-    tile_metas: BTreeMap<TileID, Option<SlotMetaTileData>>,
-    tile_metas_full: BTreeMap<TileID, Option<SlotMetaTileData>>,
+
+    // These maps have to track four different kinds of states:
+    //
+    //  1. Entry missing: user navigated away before response came back.
+    //  2. None: awaiting response.
+    //  3. Some(Err(_)): response failed or returned with an error.
+    //  4. Some(Ok(_)): successfully completed response.
+    tiles: BTreeMap<TileID, Option<TileResult<SlotTileData>>>,
+    tile_metas: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
+    tile_metas_full: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
+
     last_view_interval: Option<Interval>,
 }
 
@@ -501,6 +509,12 @@ impl Entry for Summary {
         let mut last_point: Option<Pos2> = None;
         let mut hover_util = None;
         for tile in self.tiles.values().flatten() {
+            let Ok(tile) = tile else {
+                // Paint the entire tile red to indicate the error.
+                ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
+                return;
+            };
+
             for util in &tile.utilization {
                 let mut point = util_to_screen(util);
                 if let Some(mut last) = last_point {
@@ -633,7 +647,7 @@ impl Slot {
         tile_id: TileID,
         config: &mut Config,
         full: bool,
-    ) -> Option<&SlotMetaTileData> {
+    ) -> Option<&TileResult<SlotMetaTileData>> {
         let metas = if full {
             &mut self.tile_metas_full
         } else {
@@ -672,6 +686,12 @@ impl Slot {
             return hover_pos;
         }
         let tile = tile.as_ref().unwrap();
+
+        let Ok(tile) = tile else {
+            // Paint the entire tile red to indicate the error.
+            ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
+            return hover_pos;
+        };
 
         if !cx.view_interval.overlaps(tile_id.0) {
             return hover_pos;
@@ -763,6 +783,14 @@ impl Slot {
             // Hack: clone here  to avoid mutability conflict.
             let entry_id = self.entry_id.clone();
             if let Some(tile_meta) = self.fetch_meta_tile(tile_id, config, false) {
+                let tile_meta = match tile_meta {
+                    Ok(t) => t,
+                    Err(e) => {
+                        ui.show_tooltip("task_tooltip", &item_rect, e);
+                        return hover_pos;
+                    }
+                };
+
                 let item_meta = &tile_meta.items[row][item_idx];
                 ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
                     ui.label(&item_meta.title);
@@ -881,7 +909,7 @@ impl Entry for Slot {
         }
 
         for (tile_id, tile) in &self.tile_metas_full {
-            if let Some(tile) = tile {
+            if let Some(Ok(tile)) = tile {
                 if !config.search_state.start_tile(self, *tile_id) {
                     continue;
                 }
@@ -1505,7 +1533,7 @@ impl Window {
     fn find_item_irow(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<usize> {
         let slot = self.find_slot(entry_id)?;
         for tile in slot.tiles.values() {
-            let Some(tile) = tile else {
+            let Some(Ok(tile)) = tile else {
                 continue;
             };
             for (row, items) in tile.items.iter().enumerate() {
@@ -1523,7 +1551,7 @@ impl Window {
     fn find_item_meta(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<&ItemMeta> {
         let slot = self.find_slot(entry_id)?;
         for tile in slot.tile_metas.values() {
-            let Some(tile) = tile else {
+            let Some(Ok(tile)) = tile else {
                 continue;
             };
             for items in &tile.items {
@@ -2538,40 +2566,40 @@ impl eframe::App for ProfApp {
         }
 
         for window in windows.iter_mut() {
-            for (tile, _) in window.config.data_source.get_summary_tiles() {
-                if let Some(entry) = window.find_summary_mut(&tile.entry_id) {
+            for (tile, req) in window.config.data_source.get_summary_tiles() {
+                if let Some(entry) = window.find_summary_mut(&req.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
                     entry
                         .tiles
-                        .entry(tile.tile_id)
-                        .and_modify(|t| *t = Some(tile.data));
+                        .entry(req.tile_id)
+                        .and_modify(|t| *t = Some(tile.map(|s| s.data)));
                 }
             }
 
-            for (tile, _) in window.config.data_source.get_slot_tiles() {
-                if let Some(entry) = window.find_slot_mut(&tile.entry_id) {
+            for (tile, req) in window.config.data_source.get_slot_tiles() {
+                if let Some(entry) = window.find_slot_mut(&req.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
                     entry
                         .tiles
-                        .entry(tile.tile_id)
-                        .and_modify(|t| *t = Some(tile.data));
+                        .entry(req.tile_id)
+                        .and_modify(|t| *t = Some(tile.map(|s| s.data)));
                 }
             }
 
-            for (tile, full) in window.config.data_source.get_slot_meta_tiles() {
-                if let Some(entry) = window.find_slot_mut(&tile.entry_id) {
+            for (tile, req) in window.config.data_source.get_slot_meta_tiles() {
+                if let Some(entry) = window.find_slot_mut(&req.entry_id) {
                     // If the entry doesn't exist, we already zoomed away and
                     // are no longer interested in this tile.
-                    let metas = if full {
+                    let metas = if req.full {
                         &mut entry.tile_metas_full
                     } else {
                         &mut entry.tile_metas
                     };
                     metas
-                        .entry(tile.tile_id)
-                        .and_modify(|t| *t = Some(tile.data));
+                        .entry(req.tile_id)
+                        .and_modify(|t| *t = Some(tile.map(|s| s.data)));
                 }
             }
         }
