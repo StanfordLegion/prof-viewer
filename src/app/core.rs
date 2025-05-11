@@ -1507,7 +1507,7 @@ impl Window {
 
     fn find_item_meta(&self, entry_id: &EntryID, item_uid: ItemUID) -> Option<&ItemMeta> {
         let slot = self.find_slot(entry_id)?;
-        for tile in slot.tile_metas.values() {
+        for tile in slot.tile_metas_full.values() {
             let Some(Ok(tile)) = tile else {
                 continue;
             };
