@@ -53,8 +53,40 @@ impl TileManager {
             return fill_cache(tile_cache, [], last_request_interval, request_interval);
         }
 
+        let ratio = |level: &Vec<TileID>| {
+            let d = level.first().unwrap().0.duration_ns();
+            if d < request_duration {
+                request_duration as f64 / d as f64
+            } else {
+                d as f64 / request_duration as f64
+            }
+        };
+
+        // Dynamic profile.
         if self.tile_set.tiles.is_empty() {
-            // For dynamic profiles, just return the request as one tile.
+            if let Some(cache_interval) = tile_cache
+                .iter()
+                .copied()
+                .reduce(|a, b| TileID(a.0.union(b.0)))
+            {
+                // We can use the existing cache if:
+                //
+                //  1. There is at least partial overlap with the new request.
+                //  2. We haven't drifted too far from the tile size requested before.
+
+                if ratio(tile_cache) <= 2.0 {
+                    if cache_interval.0.contains_interval(request_interval) {
+                        // Interval completely contained in the existing cache, just return it.
+                        *last_request_interval = Some(request_interval);
+                        return tile_cache.clone();
+                    } else if cache_interval.0.overlaps(request_interval) {
+                        // Partial overlap, extend the cache in the direction we need.
+                        todo!();
+                    }
+                }
+            }
+
+            // Otherwise just return the request as one tile.
             return fill_cache(
                 tile_cache,
                 [TileID(request_interval)],
@@ -70,15 +102,6 @@ impl TileManager {
         } else {
             // Otherwise estimate the best zoom level, where "best" minimizes the
             // ratio of the tile size to request size.
-            let request_duration = request_interval.duration_ns();
-            let ratio = |level: &Vec<TileID>| {
-                let d = level.first().unwrap().0.duration_ns();
-                if d < request_duration {
-                    request_duration as f64 / d as f64
-                } else {
-                    d as f64 / request_duration as f64
-                }
-            };
             self.tile_set
                 .tiles
                 .iter()
@@ -137,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn request_dynamic_interval() {
+    fn request_dynamic_repeat() {
         let int = Interval::new(Timestamp(0), Timestamp(10));
         let req = Interval::new(Timestamp(0), Timestamp(10));
         let mut tm = TileManager::new(TileSet::default(), int);
@@ -149,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn request_static_interval() {
+    fn request_static_repeat() {
         let int = Interval::new(Timestamp(0), Timestamp(100));
         let req = Interval::new(Timestamp(10), Timestamp(90));
         let ts = TileSet {
@@ -176,5 +199,39 @@ mod tests {
         assert_eq!(&tm.request_tiles(req, false), &part);
         assert_eq!(&tm.request_tiles(req, true), &full);
         assert_eq!(&tm.request_tiles(req, true), &full);
+    }
+
+    #[test]
+    fn request_dynamic_zoom() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req90 = Interval::new(Timestamp(0), Timestamp(90));
+        let req80 = Interval::new(Timestamp(0), Timestamp(80));
+        let req70 = Interval::new(Timestamp(0), Timestamp(70));
+        let req60 = Interval::new(Timestamp(0), Timestamp(60));
+        let req50 = Interval::new(Timestamp(0), Timestamp(50));
+        let req40 = Interval::new(Timestamp(0), Timestamp(40));
+        let req30 = Interval::new(Timestamp(0), Timestamp(30));
+        let req20 = Interval::new(Timestamp(0), Timestamp(20));
+        let req10 = Interval::new(Timestamp(0), Timestamp(10));
+        let mut tm = TileManager::new(TileSet::default(), int);
+        // Zoom level sticks until we reach the threshold.
+        assert_eq!(tm.request_tiles(req90, false), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req80, false), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req70, false), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req60, false), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req50, false), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req40, false), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req30, false), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req20, false), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req10, false), vec![TileID(req10)]);
+        assert_eq!(tm.request_tiles(req90, true), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req80, true), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req70, true), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req60, true), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req50, true), vec![TileID(req90)]);
+        assert_eq!(tm.request_tiles(req40, true), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req30, true), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req20, true), vec![TileID(req40)]);
+        assert_eq!(tm.request_tiles(req10, true), vec![TileID(req10)]);
     }
 }

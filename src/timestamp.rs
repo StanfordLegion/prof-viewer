@@ -100,7 +100,10 @@ impl Interval {
         self.stop.0 - self.start.0
     }
     pub fn contains(self, point: Timestamp) -> bool {
-        point >= self.start && point < self.stop
+        self.start <= point && point < self.stop
+    }
+    pub fn contains_interval(self, other: Interval) -> bool {
+        self.start <= other.start && other.stop <= self.stop
     }
     pub fn overlaps(self, other: Interval) -> bool {
         !(other.stop <= self.start || other.start >= self.stop)
@@ -458,6 +461,21 @@ mod tests {
             assert!(i0.contains(Timestamp(3)));
             assert!(!i0.contains(Timestamp(4))); // Not included!
             assert!(!i0.contains(Timestamp(5)));
+        }
+
+        #[test]
+        fn test_contains_interval() {
+            // Intervals are exclusive: they do NOT contain stop
+            let i0 = Interval::new(Timestamp(2), Timestamp(4));
+            assert!(!i0.contains_interval(Interval::new(Timestamp(1), Timestamp(4))));
+            assert!(i0.contains_interval(Interval::new(Timestamp(2), Timestamp(3))));
+            assert!(i0.contains_interval(Interval::new(Timestamp(3), Timestamp(4))));
+            assert!(i0.contains_interval(Interval::new(Timestamp(4), Timestamp(4))));
+            assert!(!i0.contains_interval(Interval::new(Timestamp(2), Timestamp(5))));
+            assert!(!i0.contains_interval(Interval::new(Timestamp(3), Timestamp(5))));
+            assert!(!i0.contains_interval(Interval::new(Timestamp(4), Timestamp(5))));
+            // Empty intervals are not contained unless they also fall inside
+            assert!(!i0.contains_interval(Interval::new(Timestamp(5), Timestamp(5))));
         }
 
         #[test]
