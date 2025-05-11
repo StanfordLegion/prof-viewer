@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::data::{TileID, TileSet};
 use crate::timestamp::Interval;
 
@@ -12,7 +14,12 @@ fn select<T>(cond: bool, true_value: T, false_value: T) -> T {
     if cond { true_value } else { false_value }
 }
 
-fn fill_cache<T: Clone, I: IntoIterator<Item = T>>(cache: &mut Vec<T>, values: I) -> Vec<T> {
+fn fill_cache<T, I, K>(cache: &mut Vec<T>, values: I, last_key: &mut Option<K>, key: K) -> Vec<T>
+where
+    T: Clone,
+    I: IntoIterator<Item = T>,
+{
+    *last_key = Some(key);
     cache.clear();
     cache.extend(values);
     cache.clone()
@@ -43,13 +50,17 @@ impl TileManager {
 
         let request_duration = request_interval.duration_ns();
         if request_duration <= 0 {
-            return Vec::new();
+            return fill_cache(tile_cache, [], last_request_interval, request_interval);
         }
 
         if self.tile_set.tiles.is_empty() {
             // For dynamic profiles, just return the request as one tile.
-            *last_request_interval = Some(request_interval);
-            return fill_cache(tile_cache, [TileID(request_interval)]);
+            return fill_cache(
+                tile_cache,
+                [TileID(request_interval)],
+                last_request_interval,
+                request_interval,
+            );
         }
 
         // We're in a static profile. Choose an appropriate level to load.
@@ -76,14 +87,19 @@ impl TileManager {
         };
 
         // Now filter to just tiles overlapping the requested interval.
-        *last_request_interval = Some(request_interval);
         fill_cache(
             tile_cache,
             chosen_level
                 .iter()
                 .filter(|tile| request_interval.overlaps(tile.0))
                 .copied(),
+            last_request_interval,
+            request_interval,
         )
+    }
+
+    pub fn invalidate_cache<T>(tile_ids: &[TileID], cache: &mut BTreeMap<TileID, T>) {
+        cache.retain(|tile_id, _| tile_ids.contains(tile_id));
     }
 }
 
@@ -94,7 +110,7 @@ mod tests {
     use crate::timestamp::Timestamp;
 
     #[test]
-    fn test_dynamic_empty() {
+    fn request_dynamic_empty() {
         let int = Interval::new(Timestamp(0), Timestamp(10));
         let req = Interval::new(Timestamp(5), Timestamp(5));
         let mut tm = TileManager::new(TileSet::default(), int);
@@ -103,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_static_empty() {
+    fn request_static_empty() {
         let int = Interval::new(Timestamp(0), Timestamp(100));
         let req = Interval::new(Timestamp(25), Timestamp(25));
         let ts = TileSet {
@@ -121,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dynamic_request() {
+    fn request_dynamic_interval() {
         let int = Interval::new(Timestamp(0), Timestamp(10));
         let req = Interval::new(Timestamp(0), Timestamp(10));
         let mut tm = TileManager::new(TileSet::default(), int);
@@ -133,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn test_static_request() {
+    fn request_static_interval() {
         let int = Interval::new(Timestamp(0), Timestamp(100));
         let req = Interval::new(Timestamp(10), Timestamp(90));
         let ts = TileSet {

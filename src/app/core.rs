@@ -61,7 +61,6 @@ struct Summary {
     entry_id: EntryID,
     color: Color32,
     tiles: BTreeMap<TileID, Option<TileResult<SummaryTileData>>>,
-    last_view_interval: Option<Interval>,
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +70,6 @@ struct Slot {
     long_name: String,
     expanded: bool,
     max_rows: u64,
-    tile_ids: Vec<TileID>,
 
     // These maps have to track four different kinds of states:
     //
@@ -82,8 +80,6 @@ struct Slot {
     tiles: BTreeMap<TileID, Option<TileResult<SlotTileData>>>,
     tile_metas: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
     tile_metas_full: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
-
-    last_view_interval: Option<Interval>,
 }
 
 #[derive(Debug, Clone)]
@@ -397,23 +393,17 @@ trait Entry {
 }
 
 impl Summary {
-    fn clear(&mut self) {
-        self.tiles.clear();
-    }
-
-    fn validate(&mut self, cx: &Context) {
-        if self.last_view_interval != Some(cx.view_interval) {
-            self.clear();
-        }
-        self.last_view_interval = Some(cx.view_interval);
-    }
-
     fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval, false) {
-            config
-                .data_source
-                .fetch_summary_tile(&self.entry_id, tile_id, false);
-            self.tiles.insert(tile_id, None);
+        const PART: bool = false;
+        let tile_ids = config.request_tiles(cx.view_interval, PART);
+        Config::invalidate_cache(&tile_ids, &mut self.tiles);
+        for tile_id in tile_ids {
+            self.tiles.entry(tile_id).or_insert_with(|| {
+                config
+                    .data_source
+                    .fetch_summary_tile(&self.entry_id, tile_id, PART);
+                None
+            });
         }
     }
 }
@@ -425,7 +415,6 @@ impl Entry for Summary {
                 entry_id,
                 color: *color,
                 tiles: BTreeMap::new(),
-                last_view_interval: None,
             }
         } else {
             unreachable!()
@@ -482,10 +471,7 @@ impl Entry for Summary {
         let response = ui.allocate_rect(rect, egui::Sense::hover());
         let hover_pos = response.hover_pos(); // where is the mouse hovering?
 
-        self.validate(cx);
-        if self.tiles.is_empty() {
-            self.inflate(config, cx);
-        }
+        self.inflate(config, cx);
 
         let style = ui.style();
         let visuals = style.interact_selectable(&response, false);
@@ -636,28 +622,20 @@ impl Slot {
         }
     }
 
-    fn clear(&mut self) {
-        self.tile_ids.clear();
-        self.tiles.clear();
-        self.tile_metas.clear();
-        self.tile_metas_full.clear();
-    }
-
-    fn validate(&mut self, cx: &Context) {
-        if self.last_view_interval != Some(cx.view_interval) {
-            self.clear();
+    fn inflate(&mut self, config: &mut Config, cx: &mut Context) -> Vec<TileID> {
+        const PART: bool = false;
+        let tile_ids = config.request_tiles(cx.view_interval, PART);
+        Config::invalidate_cache(&tile_ids, &mut self.tiles);
+        Config::invalidate_cache(&tile_ids, &mut self.tile_metas);
+        for tile_id in &tile_ids {
+            self.tiles.entry(*tile_id).or_insert_with(|| {
+                config
+                    .data_source
+                    .fetch_slot_tile(&self.entry_id, *tile_id, false);
+                None
+            });
         }
-        self.last_view_interval = Some(cx.view_interval);
-    }
-
-    fn inflate(&mut self, config: &mut Config, cx: &mut Context) {
-        for tile_id in config.request_tiles(cx.view_interval, false) {
-            config
-                .data_source
-                .fetch_slot_tile(&self.entry_id, tile_id, false);
-            self.tile_ids.push(tile_id);
-            self.tiles.insert(tile_id, None);
-        }
+        tile_ids
     }
 
     fn fetch_meta_tile(
@@ -686,7 +664,7 @@ impl Slot {
     #[allow(clippy::too_many_arguments)]
     fn render_tile(
         &mut self,
-        tile_index: usize,
+        tile_id: TileID,
         rows: u64,
         mut hover_pos: Option<Pos2>,
         ui: &mut egui::Ui,
@@ -695,8 +673,6 @@ impl Slot {
         config: &mut Config,
         cx: &mut Context,
     ) -> Option<Pos2> {
-        // Hack: can't pass this as an argument because it aliases self.
-        let tile_id = self.tile_ids[tile_index];
         let tile = self.tiles.get(&tile_id).unwrap();
 
         if !tile.is_some() {
@@ -804,7 +780,8 @@ impl Slot {
         if let Some((row, item_idx, item_rect, tile_id)) = interact_item {
             // Hack: clone here  to avoid mutability conflict.
             let entry_id = self.entry_id.clone();
-            if let Some(tile_meta) = self.fetch_meta_tile(tile_id, config, false) {
+            const PART: bool = false;
+            if let Some(tile_meta) = self.fetch_meta_tile(tile_id, config, PART) {
                 let tile_meta = match tile_meta {
                     Ok(t) => t,
                     Err(e) => {
@@ -877,11 +854,9 @@ impl Entry for Slot {
                 long_name: long_name.to_owned(),
                 expanded: true,
                 max_rows: *max_rows,
-                tile_ids: Vec::new(),
                 tiles: BTreeMap::new(),
                 tile_metas: BTreeMap::new(),
                 tile_metas_full: BTreeMap::new(),
-                last_view_interval: None,
             }
         } else {
             unreachable!()
@@ -921,9 +896,11 @@ impl Entry for Slot {
     }
 
     fn inflate_meta(&mut self, config: &mut Config, cx: &mut Context) {
-        self.validate(cx);
-        for tile_id in config.request_tiles(cx.view_interval, true) {
-            self.fetch_meta_tile(tile_id, config, true);
+        const FULL: bool = true;
+        let tile_ids = config.request_tiles(cx.view_interval, FULL);
+        Config::invalidate_cache(&tile_ids, &mut self.tile_metas_full);
+        for tile_id in tile_ids {
+            self.fetch_meta_tile(tile_id, config, FULL);
         }
     }
 
@@ -965,10 +942,7 @@ impl Entry for Slot {
         let mut hover_pos = response.hover_pos(); // where is the mouse hovering?
 
         if self.expanded {
-            self.validate(cx);
-            if self.tiles.is_empty() {
-                self.inflate(config, cx);
-            }
+            let tile_ids = self.inflate(config, cx);
 
             let style = ui.style();
             let visuals = style.interact_selectable(&response, false);
@@ -976,9 +950,9 @@ impl Entry for Slot {
                 .rect(rect, 0.0, visuals.bg_fill, visuals.bg_stroke);
 
             let rows = self.rows();
-            for tile_index in 0..self.tile_ids.len() {
+            for tile_id in tile_ids {
                 hover_pos =
-                    self.render_tile(tile_index, rows, hover_pos, ui, rect, viewport, config, cx);
+                    self.render_tile(tile_id, rows, hover_pos, ui, rect, viewport, config, cx);
             }
         }
     }
@@ -1462,6 +1436,10 @@ impl Config {
 
     fn request_tiles(&mut self, view_interval: Interval, full: bool) -> Vec<TileID> {
         self.tile_manager.request_tiles(view_interval, full)
+    }
+
+    fn invalidate_cache<T>(tile_ids: &[TileID], cache: &mut BTreeMap<TileID, T>) {
+        TileManager::invalidate_cache(tile_ids, cache);
     }
 
     fn scroll_to_item(&mut self, item_loc: ItemLocator) {
