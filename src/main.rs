@@ -26,8 +26,6 @@ fn main() {
     let href: String = loc.href().expect("unable to get window URL");
     let browser_url = Url::parse(&href).expect("unable to parse location URL");
 
-    const DEFAULT_URL: &str = "http://127.0.0.1:8080";
-
     let ds: Vec<_> = browser_url
         .query_pairs()
         .filter(|(key, _)| key.starts_with("url"))
