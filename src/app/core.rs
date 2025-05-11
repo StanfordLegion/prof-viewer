@@ -14,9 +14,10 @@ use percentage::{Percentage, PercentageInteger};
 use regex::{Regex, escape};
 use serde::{Deserialize, Serialize};
 
+use crate::app::tile_manager::TileManager;
 use crate::data::{
     DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemLink,
-    ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, TileSet, UtilPoint,
+    ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, UtilPoint,
 };
 use crate::deferred_data::{
     CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource, TileResult,
@@ -165,7 +166,6 @@ struct Config {
 
     // This is just for the local profile
     interval: Interval,
-    tile_set: TileSet,
     warning_message: Option<String>,
 
     data_source: CountingDeferredDataSource<LruDeferredDataSource<Box<dyn DeferredDataSource>>>,
@@ -181,8 +181,7 @@ struct Config {
     // populate the following field to track the re-scroll when the item is found
     scroll_to_item_retry: Option<ItemLocator>,
 
-    last_request_interval: Option<Interval>,
-    request_tile_cache: Vec<TileID>,
+    tile_manager: TileManager,
 }
 
 struct Window {
@@ -1448,7 +1447,6 @@ impl Config {
             kinds,
             kind_filter: BTreeSet::new(),
             interval,
-            tile_set,
             warning_message,
             data_source: CountingDeferredDataSource::new(LruDeferredDataSource::new(
                 data_source,
@@ -1458,57 +1456,12 @@ impl Config {
             items_selected: BTreeMap::new(),
             scroll_to_item: None,
             scroll_to_item_retry: None,
-            last_request_interval: None,
-            request_tile_cache: Vec::new(),
+            tile_manager: TileManager::new(tile_set, interval),
         }
     }
 
     fn request_tiles(&mut self, view_interval: Interval, full: bool) -> Vec<TileID> {
-        let request_interval = view_interval.intersection(self.interval);
-        if self.last_request_interval == Some(request_interval) {
-            return self.request_tile_cache.clone();
-        }
-
-        let request_duration = request_interval.duration_ns();
-        if request_duration <= 0 {
-            return Vec::new();
-        }
-
-        if self.tile_set.tiles.is_empty() {
-            // For dynamic profiles, just return the request as one tile.
-            self.request_tile_cache = vec![TileID(request_interval)];
-            return self.request_tile_cache.clone();
-        }
-
-        // We're in a static profile. Choose an appropriate level to load.
-        let chosen_level = if full {
-            // Full request must always fetch highest level of detail.
-            self.tile_set.tiles.last().unwrap()
-        } else {
-            // Otherwise estimate the best zoom level, where "best" minimizes the
-            // ratio of the tile size to request size.
-            let request_duration = request_interval.duration_ns();
-            self.tile_set
-                .tiles
-                .iter()
-                .min_by_key(|level| {
-                    let d = level.first().unwrap().0.duration_ns();
-                    if d < request_duration {
-                        request_duration / d
-                    } else {
-                        d / request_duration
-                    }
-                })
-                .unwrap()
-        };
-
-        // Now filter to just tiles overlapping the requested interval.
-        self.request_tile_cache = chosen_level
-            .iter()
-            .filter(|tile| request_interval.overlaps(tile.0))
-            .copied()
-            .collect();
-        self.request_tile_cache.clone()
+        self.tile_manager.request_tiles(view_interval, full)
     }
 
     fn scroll_to_item(&mut self, item_loc: ItemLocator) {
