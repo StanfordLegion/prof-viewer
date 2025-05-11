@@ -737,7 +737,7 @@ impl Slot {
                 let mut interval = item.interval;
                 if interval.duration_ns() < pixel_ns {
                     let expand_ns = (pixel_ns - interval.duration_ns()) / 2;
-                    interval = interval.grow(expand_ns);
+                    interval = interval.grow(expand_ns).intersection(tile_id.0);
                     if item_idx > 0 {
                         let last_item = &row_items[item_idx - 1];
                         interval = interval.subtract_before(last_item.interval.stop);
