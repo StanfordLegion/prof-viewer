@@ -28,12 +28,12 @@
 - [x] Report both field IDs and field names
 - [x] On each instance box, add a "zoom to item" button to the "initiator" (i.e. the task that created that instance?)
 - [x] When user clicks "zoom to item", e.g. on an instance listed in a task box, also open that new item's popup
+- [x] Make text in popup boxes copyable
 - [ ] Horizontal pan (via click and drag, touchpad, or horizontal scroll wheel)
 - [ ] Allow horizontal panning past the start/end of the profile, but not so much that none of the actual profile is visible anymore. Out-of-bounds areas should get a different background color.
 - [ ] Keyboard bindings (e.g., arrow keys to select panels, space bar to toggle expand/collapse, ESC key to close popups)
 - [ ] Editable key bindings?
 - [ ] Better error handling (e.g., when the provided URL 404s, there's a permission issue, or parsing fails)
-- [ ] Make text in popup boxes copyable
 - [ ] Make highlighted boxes clearer
 
   Currently a highlighted box is shown in red, but that color is already in use in the default color scheme, so highlighted items don't stand out
