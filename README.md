@@ -15,14 +15,14 @@ cargo install --locked --all-features --path legion/tools/legion_prof_rs
 To start a native viewer right away, run:
 
 ```
-legion_prof --view prof_*.gz
+legion_prof view prof_*.gz
 ```
 
-To start a server (and attach a viewer to it), run:
+To start a server (and attach a viewer to it), run (in separate shells):
 
 ```
-legion_prof --serve prof_*.gz
-legion_prof --attach http://127.0.0.1:8080/
+legion_prof serve prof_*.gz
+legion_prof attach http://127.0.0.1:8080/
 ```
 
 If you really want to run the frontend by itself, continue to the instructions
@@ -35,7 +35,7 @@ below.
 Run:
 
 ```
-cargo run --release
+cargo run --release <URL>
 ```
 
 Ubuntu dependencies:
