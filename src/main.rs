@@ -31,7 +31,7 @@ fn main() {
     let ds: Vec<_> = browser_url
         .query_pairs()
         .filter(|(key, _)| key.starts_with("url"))
-        .map(|(_, value)| http_ds(Url::parse(value).expect("unable to parse query URL")))
+        .map(|(_, value)| http_ds(Url::parse(&value).expect("unable to parse query URL")))
         .collect();
 
     legion_prof_viewer::app::start(ds);
