@@ -5,10 +5,7 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
-use egui::{
-    Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, TextWrapMode,
-    Vec2,
-};
+use egui::{Color32, NumExt, Pos2, Rect, RichText, ScrollArea, Slider, Stroke, TextStyle, Vec2};
 use egui_extras::{Column, TableBuilder};
 #[cfg(not(target_arch = "wasm32"))]
 use itertools::Itertools;
@@ -2254,7 +2251,6 @@ impl ProfApp {
                 ui.id(),
                 popup_rect,
                 popup_rect.expand(16.0),
-                ui.stack().info.clone(),
             );
             egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
                 ui.label(label_text);
@@ -2372,11 +2368,9 @@ impl ProfApp {
         let mut result = None;
         let label = |ui: &mut egui::Ui, v| {
             if let Some(color) = color {
-                ui.add(
-                    egui::Label::new(RichText::new(v).color(color)).wrap_mode(TextWrapMode::Wrap),
-                );
+                ui.add(egui::Label::new(RichText::new(v).color(color)).wrap(true));
             } else {
-                ui.add(egui::Label::new(v).wrap_mode(TextWrapMode::Wrap));
+                ui.add(egui::Label::new(v).wrap(true));
             }
         };
         let label_button = |ui: &mut egui::Ui, v, b| {
@@ -2809,7 +2803,6 @@ impl UiExtra for egui::Ui {
     ) {
         egui::containers::show_tooltip_for(
             self.ctx(),
-            self.layer_id(),
             self.auto_id_with(id_source),
             rect,
             add_contents,
@@ -2865,7 +2858,7 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
     eframe::run_native(
         app_name,
         native_options,
-        Box::new(|cc| Ok(Box::new(ProfApp::new(cc, data_sources)))),
+        Box::new(|cc| Box::new(ProfApp::new(cc, data_sources))),
     )
     .expect("failed to start eframe");
 }
@@ -2878,30 +2871,13 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
     let web_options = eframe::WebOptions::default();
 
     wasm_bindgen_futures::spawn_local(async {
-        let start_result = eframe::WebRunner::new()
+        eframe::WebRunner::new()
             .start(
-                "the_canvas_id",
+                "the_canvas_id", // hardcode it
                 web_options,
-                Box::new(|cc| Ok(Box::new(ProfApp::new(cc, data_sources)))),
+                Box::new(|cc| Box::new(ProfApp::new(cc, data_sources))),
             )
-            .await;
-
-        // Remove the loading text and spinner:
-        let loading_text = web_sys::window()
-            .and_then(|w| w.document())
-            .and_then(|d| d.get_element_by_id("loading_text"));
-        if let Some(loading_text) = loading_text {
-            match start_result {
-                Ok(_) => {
-                    loading_text.remove();
-                }
-                Err(e) => {
-                    loading_text.set_inner_html(
-                        "<p> The app has crashed. See the developer console for details. </p>",
-                    );
-                    panic!("Failed to start eframe: {e:?}");
-                }
-            }
-        }
+            .await
+            .expect("failed to start eframe");
     });
 }
