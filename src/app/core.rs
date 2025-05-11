@@ -2040,7 +2040,7 @@ impl ProfApp {
 
     fn keyboard(ctx: &egui::Context, cx: &mut Context, windows: &mut [Window]) {
         // Focus is elsewhere, don't check any keys
-        if ctx.memory(|m| m.focus().is_some()) {
+        if ctx.memory(|m| m.focused().is_some()) {
             return;
         }
 
@@ -2179,7 +2179,7 @@ impl ProfApp {
                 ui.painter().rect(drag_rect, 0.0, color, Stroke::NONE);
 
                 drag_interval = Some(interval);
-            } else if response.drag_released() {
+            } else if response.drag_stopped() {
                 // Only set view interval if the drag was a certain amount
                 const MIN_DRAG_DISTANCE: f32 = 4.0;
                 if max - min > MIN_DRAG_DISTANCE {
