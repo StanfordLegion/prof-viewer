@@ -25,6 +25,11 @@ where
     cache.clone()
 }
 
+fn reuse_cache<T: Clone, K>(cache: &[T], last_key: &mut Option<K>, key: K) -> Vec<T> {
+    *last_key = Some(key);
+    cache.to_owned()
+}
+
 impl TileManager {
     pub fn new(tile_set: TileSet, interval: Interval) -> Self {
         Self {
@@ -53,8 +58,16 @@ impl TileManager {
             return fill_cache(tile_cache, [], last_request_interval, request_interval);
         }
 
-        let ratio = |level: &Vec<TileID>| {
-            let d = level.first().unwrap().0.duration_ns();
+        // Tiles at the edges can be truncated (to fit the profile), so we have
+        // to be careful and always take the largest tile. Fortunately we only
+        // need to check two, because (if the list has at least two elements),
+        // one is guaranteed to be an interior tile.
+        let ratio = |level: &[TileID]| {
+            let mut it = level.iter();
+            // Safe to assume at least one element because request_interval is non-empty
+            let first = it.next().unwrap().0.duration_ns();
+            let second = it.next();
+            let d = second.map_or(first, |s| first.max(s.0.duration_ns()));
             if d < request_duration {
                 request_duration as f64 / d as f64
             } else {
@@ -77,11 +90,47 @@ impl TileManager {
                 if ratio(tile_cache) <= 2.0 {
                     if cache_interval.0.contains_interval(request_interval) {
                         // Interval completely contained in the existing cache, just return it.
-                        *last_request_interval = Some(request_interval);
-                        return tile_cache.clone();
+                        return reuse_cache(tile_cache, last_request_interval, request_interval);
                     } else if cache_interval.0.overlaps(request_interval) {
-                        // Partial overlap, extend the cache in the direction we need.
-                        todo!();
+                        // Partial overlap, extend the cache to cover. Keep tile
+                        // size the same for consistency.
+                        let new_before = request_interval.subtract_after(cache_interval.0.start);
+                        let new_after = request_interval.subtract_before(cache_interval.0.stop);
+                        let tile_size = tile_cache.first().unwrap().0.duration_ns();
+
+                        let mut new_tiles = Vec::new();
+
+                        // Add tiles to the left.
+                        let count_before =
+                            (new_before.duration_ns() as f64 / tile_size as f64).ceil() as i64;
+                        let first_tile = tile_cache.first().unwrap().0;
+                        for i in 0..count_before {
+                            let new_tile = first_tile
+                                .translate((i - count_before) * tile_size)
+                                .intersection(self.interval);
+                            new_tiles.push(TileID(new_tile));
+                        }
+
+                        // Keep existing tiles.
+                        new_tiles.extend(tile_cache.iter());
+
+                        // Add tiles to the right.
+                        let count_after =
+                            (new_after.duration_ns() as f64 / tile_size as f64).ceil() as i64;
+                        let last_tile = tile_cache.last().unwrap().0;
+                        for i in 0..count_after {
+                            let new_tile = last_tile
+                                .translate((i + 1) * tile_size)
+                                .intersection(self.interval);
+                            new_tiles.push(TileID(new_tile));
+                        }
+
+                        return fill_cache(
+                            tile_cache,
+                            new_tiles,
+                            last_request_interval,
+                            request_interval,
+                        );
                     }
                 }
             }
@@ -202,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn request_dynamic_zoom() {
+    fn request_dynamic_zoom_in() {
         let int = Interval::new(Timestamp(0), Timestamp(100));
         let req90 = Interval::new(Timestamp(0), Timestamp(90));
         let req80 = Interval::new(Timestamp(0), Timestamp(80));
@@ -233,5 +282,194 @@ mod tests {
         assert_eq!(tm.request_tiles(req30, true), vec![TileID(req40)]);
         assert_eq!(tm.request_tiles(req20, true), vec![TileID(req40)]);
         assert_eq!(tm.request_tiles(req10, true), vec![TileID(req10)]);
+    }
+
+    #[test]
+    fn request_dynamic_zoom_out_right() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req10 = Interval::new(Timestamp(0), Timestamp(10));
+        let req20 = Interval::new(Timestamp(0), Timestamp(20));
+        let req30 = Interval::new(Timestamp(0), Timestamp(30));
+        let req40 = Interval::new(Timestamp(0), Timestamp(40));
+        let req50 = Interval::new(Timestamp(0), Timestamp(50));
+        let req60 = Interval::new(Timestamp(0), Timestamp(60));
+        let req70 = Interval::new(Timestamp(0), Timestamp(70));
+        let req80 = Interval::new(Timestamp(0), Timestamp(80));
+        let req90 = Interval::new(Timestamp(0), Timestamp(90));
+        let req100 = Interval::new(Timestamp(0), Timestamp(100));
+        let ts10 = vec![TileID(Interval::new(Timestamp(0), Timestamp(10)))];
+        let ts10x2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(10))),
+            TileID(Interval::new(Timestamp(10), Timestamp(20))),
+        ];
+        let ts30 = vec![TileID(Interval::new(Timestamp(0), Timestamp(30)))];
+        let ts30x2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(30))),
+            TileID(Interval::new(Timestamp(30), Timestamp(60))),
+        ];
+        let ts70 = vec![TileID(Interval::new(Timestamp(0), Timestamp(70)))];
+        let ts70x2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(70))),
+            TileID(Interval::new(Timestamp(70), Timestamp(100))),
+        ];
+        let mut tm = TileManager::new(TileSet::default(), int);
+        // Zoom level sticks until we reach the threshold.
+        assert_eq!(tm.request_tiles(req10, false), ts10);
+        assert_eq!(tm.request_tiles(req20, false), ts10x2);
+        assert_eq!(tm.request_tiles(req30, false), ts30);
+        assert_eq!(tm.request_tiles(req40, false), ts30x2);
+        assert_eq!(tm.request_tiles(req50, false), ts30x2);
+        assert_eq!(tm.request_tiles(req60, false), ts30x2);
+        assert_eq!(tm.request_tiles(req70, false), ts70);
+        assert_eq!(tm.request_tiles(req80, false), ts70x2);
+        assert_eq!(tm.request_tiles(req90, false), ts70x2);
+        assert_eq!(tm.request_tiles(req100, false), ts70x2);
+        assert_eq!(tm.request_tiles(req10, true), ts10);
+        assert_eq!(tm.request_tiles(req20, true), ts10x2);
+        assert_eq!(tm.request_tiles(req30, true), ts30);
+        assert_eq!(tm.request_tiles(req40, true), ts30x2);
+        assert_eq!(tm.request_tiles(req50, true), ts30x2);
+        assert_eq!(tm.request_tiles(req60, true), ts30x2);
+        assert_eq!(tm.request_tiles(req70, true), ts70);
+        assert_eq!(tm.request_tiles(req80, true), ts70x2);
+        assert_eq!(tm.request_tiles(req90, true), ts70x2);
+        assert_eq!(tm.request_tiles(req100, true), ts70x2);
+    }
+
+    #[test]
+    fn request_dynamic_zoom_out_left() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req10 = Interval::new(Timestamp(90), Timestamp(100));
+        let req20 = Interval::new(Timestamp(80), Timestamp(100));
+        let req30 = Interval::new(Timestamp(70), Timestamp(100));
+        let req40 = Interval::new(Timestamp(60), Timestamp(100));
+        let req50 = Interval::new(Timestamp(50), Timestamp(100));
+        let req60 = Interval::new(Timestamp(40), Timestamp(100));
+        let req70 = Interval::new(Timestamp(30), Timestamp(100));
+        let req80 = Interval::new(Timestamp(20), Timestamp(100));
+        let req90 = Interval::new(Timestamp(10), Timestamp(100));
+        let req100 = Interval::new(Timestamp(0), Timestamp(100));
+        let ts10 = vec![TileID(Interval::new(Timestamp(90), Timestamp(100)))];
+        let ts10x2 = vec![
+            TileID(Interval::new(Timestamp(80), Timestamp(90))),
+            TileID(Interval::new(Timestamp(90), Timestamp(100))),
+        ];
+        let ts30 = vec![TileID(Interval::new(Timestamp(70), Timestamp(100)))];
+        let ts30x2 = vec![
+            TileID(Interval::new(Timestamp(40), Timestamp(70))),
+            TileID(Interval::new(Timestamp(70), Timestamp(100))),
+        ];
+        let ts70 = vec![TileID(Interval::new(Timestamp(30), Timestamp(100)))];
+        let ts70x2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(30))),
+            TileID(Interval::new(Timestamp(30), Timestamp(100))),
+        ];
+        let mut tm = TileManager::new(TileSet::default(), int);
+        // Zoom level sticks until we reach the threshold.
+        assert_eq!(tm.request_tiles(req10, false), ts10);
+        assert_eq!(tm.request_tiles(req20, false), ts10x2);
+        assert_eq!(tm.request_tiles(req30, false), ts30);
+        assert_eq!(tm.request_tiles(req40, false), ts30x2);
+        assert_eq!(tm.request_tiles(req50, false), ts30x2);
+        assert_eq!(tm.request_tiles(req60, false), ts30x2);
+        assert_eq!(tm.request_tiles(req70, false), ts70);
+        assert_eq!(tm.request_tiles(req80, false), ts70x2);
+        assert_eq!(tm.request_tiles(req90, false), ts70x2);
+        assert_eq!(tm.request_tiles(req100, false), ts70x2);
+        assert_eq!(tm.request_tiles(req10, true), ts10);
+        assert_eq!(tm.request_tiles(req20, true), ts10x2);
+        assert_eq!(tm.request_tiles(req30, true), ts30);
+        assert_eq!(tm.request_tiles(req40, true), ts30x2);
+        assert_eq!(tm.request_tiles(req50, true), ts30x2);
+        assert_eq!(tm.request_tiles(req60, true), ts30x2);
+        assert_eq!(tm.request_tiles(req70, true), ts70);
+        assert_eq!(tm.request_tiles(req80, true), ts70x2);
+        assert_eq!(tm.request_tiles(req90, true), ts70x2);
+        assert_eq!(tm.request_tiles(req100, true), ts70x2);
+    }
+
+    #[test]
+    fn request_dynamic_zoom_out_center() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req10 = Interval::new(Timestamp(45), Timestamp(55));
+        let req20 = Interval::new(Timestamp(40), Timestamp(60));
+        let req30 = Interval::new(Timestamp(35), Timestamp(65));
+        let req40 = Interval::new(Timestamp(30), Timestamp(70));
+        let req50 = Interval::new(Timestamp(25), Timestamp(75));
+        let req60 = Interval::new(Timestamp(20), Timestamp(80));
+        let req70 = Interval::new(Timestamp(15), Timestamp(85));
+        let req80 = Interval::new(Timestamp(10), Timestamp(90));
+        let req90 = Interval::new(Timestamp(5), Timestamp(95));
+        let req100 = Interval::new(Timestamp(0), Timestamp(100));
+        let ts10 = vec![TileID(Interval::new(Timestamp(45), Timestamp(55)))];
+        let ts10x3 = vec![
+            TileID(Interval::new(Timestamp(35), Timestamp(45))),
+            TileID(Interval::new(Timestamp(45), Timestamp(55))),
+            TileID(Interval::new(Timestamp(55), Timestamp(65))),
+        ];
+        let ts30 = vec![TileID(Interval::new(Timestamp(35), Timestamp(65)))];
+        let ts30x3 = vec![
+            TileID(Interval::new(Timestamp(5), Timestamp(35))),
+            TileID(Interval::new(Timestamp(35), Timestamp(65))),
+            TileID(Interval::new(Timestamp(65), Timestamp(95))),
+        ];
+        let ts70 = vec![TileID(Interval::new(Timestamp(15), Timestamp(85)))];
+        let ts70x3 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(15))),
+            TileID(Interval::new(Timestamp(15), Timestamp(85))),
+            TileID(Interval::new(Timestamp(85), Timestamp(100))),
+        ];
+        let mut tm = TileManager::new(TileSet::default(), int);
+        // Zoom level sticks until we reach the threshold.
+        assert_eq!(tm.request_tiles(req10, false), ts10);
+        assert_eq!(tm.request_tiles(req20, false), ts10x3);
+        assert_eq!(tm.request_tiles(req30, false), ts30);
+        assert_eq!(tm.request_tiles(req40, false), ts30x3);
+        assert_eq!(tm.request_tiles(req50, false), ts30x3);
+        assert_eq!(tm.request_tiles(req60, false), ts30x3);
+        assert_eq!(tm.request_tiles(req70, false), ts70);
+        assert_eq!(tm.request_tiles(req80, false), ts70x3);
+        assert_eq!(tm.request_tiles(req90, false), ts70x3);
+        assert_eq!(tm.request_tiles(req100, false), ts70x3);
+        assert_eq!(tm.request_tiles(req10, true), ts10);
+        assert_eq!(tm.request_tiles(req20, true), ts10x3);
+        assert_eq!(tm.request_tiles(req30, true), ts30);
+        assert_eq!(tm.request_tiles(req40, true), ts30x3);
+        assert_eq!(tm.request_tiles(req50, true), ts30x3);
+        assert_eq!(tm.request_tiles(req60, true), ts30x3);
+        assert_eq!(tm.request_tiles(req70, true), ts70);
+        assert_eq!(tm.request_tiles(req80, true), ts70x3);
+        assert_eq!(tm.request_tiles(req90, true), ts70x3);
+        assert_eq!(tm.request_tiles(req100, true), ts70x3);
+    }
+
+    #[test]
+    fn request_dynamic_pan_right() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req00 = Interval::new(Timestamp(0), Timestamp(20));
+        let req10 = Interval::new(Timestamp(10), Timestamp(30));
+        let req20 = Interval::new(Timestamp(20), Timestamp(40));
+        let req30 = Interval::new(Timestamp(30), Timestamp(50));
+        let req60 = Interval::new(Timestamp(60), Timestamp(80));
+        let ts20 = vec![TileID(Interval::new(Timestamp(0), Timestamp(20)))];
+        let ts20x2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(20))),
+            TileID(Interval::new(Timestamp(20), Timestamp(40))),
+        ];
+        let ts20x3 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(20))),
+            TileID(Interval::new(Timestamp(20), Timestamp(40))),
+            TileID(Interval::new(Timestamp(40), Timestamp(60))),
+        ];
+        let ts60 = vec![TileID(Interval::new(Timestamp(60), Timestamp(80)))];
+        let ts30 = vec![TileID(Interval::new(Timestamp(30), Timestamp(50)))];
+        let mut tm = TileManager::new(TileSet::default(), int);
+        // Zoom level sticks while panning, as long as there is some overlap.
+        assert_eq!(tm.request_tiles(req00, false), ts20);
+        assert_eq!(tm.request_tiles(req10, false), ts20x2);
+        assert_eq!(tm.request_tiles(req20, false), ts20x2);
+        assert_eq!(tm.request_tiles(req30, false), ts20x3);
+        assert_eq!(tm.request_tiles(req60, false), ts60);
+        assert_eq!(tm.request_tiles(req30, false), ts30);
     }
 }
