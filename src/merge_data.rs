@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
 use crate::data::{
-    DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemLink,
-    ItemUID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemField,
+    ItemLink, ItemUID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::{
     DeferredDataSource, SlotMetaTileResponse, SlotTileResponse, SummaryTileResponse,
@@ -178,7 +178,7 @@ impl MergeDeferredDataSource {
         for items in &mut tile.data.items {
             for item in items {
                 item.item_uid = self.map_src_to_dst_item_uid(idx, item.item_uid);
-                for (_, field, _) in &mut item.fields {
+                for ItemField(_, field, _) in &mut item.fields {
                     self.map_src_to_dst_field(idx, field);
                 }
             }

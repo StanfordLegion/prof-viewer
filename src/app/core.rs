@@ -19,8 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::tile_manager::TileManager;
 use crate::data::{
-    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemLink,
-    ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID, UtilPoint,
+    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
+    ItemLink, ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID,
+    UtilPoint,
 };
 use crate::deferred_data::{
     CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource, TileResult,
@@ -799,7 +800,7 @@ impl Slot {
                     if cx.debug {
                         ui.label(format!("Item UID: {}", item_meta.item_uid.0));
                     }
-                    for (field_id, field, color) in &item_meta.fields {
+                    for ItemField(field_id, field, color) in &item_meta.fields {
                         let name = config.field_schema.get_name(*field_id).unwrap();
                         let text = format!("{}", FieldWithName(name, field));
                         if let Some(color) = color {
@@ -1318,7 +1319,9 @@ impl SearchState {
         let field = self.search_field;
         if field == self.title_field {
             self.is_string_match(&item.title)
-        } else if let Some((_, value, _)) = item.fields.iter().find(|(x, _, _)| *x == field) {
+        } else if let Some(ItemField(_, value, _)) =
+            item.fields.iter().find(|ItemField(x, _, _)| *x == field)
+        {
             self.is_field_match(value)
         } else {
             false
@@ -2479,7 +2482,7 @@ impl ProfApp {
                 if cx.debug {
                     show_row("Item UID", &Field::U64(item_meta.item_uid.0), None);
                 }
-                for (field_id, field, color) in &item_meta.fields {
+                for ItemField(field_id, field, color) in &item_meta.fields {
                     let name = field_schema.get_name(*field_id).unwrap();
                     show_row(name, field, *color);
                 }

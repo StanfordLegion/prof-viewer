@@ -8,8 +8,8 @@ use std::sync::Mutex;
 
 use legion_prof_viewer::data::{
     DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
-    FieldSchema, Item, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile, SlotTileData,
-    SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
+    FieldSchema, Item, ItemField, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile,
+    SlotTileData, SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
 };
 
 use legion_prof_viewer::deferred_data::DeferredDataSourceWrapper;
@@ -184,12 +184,12 @@ impl RandomDataSource {
                         original_interval: Interval::new(start, stop),
                         title: "Test Item".to_owned(),
                         fields: vec![
-                            (
+                            ItemField(
                                 self.interval_field,
                                 Field::Interval(Interval::new(start, stop)),
                                 None,
                             ),
-                            (
+                            ItemField(
                                 self.item_uid_field,
                                 Field::U64(item_uid.0),
                                 Some(Color32::RED),

@@ -153,6 +153,13 @@ pub struct Item {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ItemField(
+    pub FieldID,
+    pub Field,
+    #[serde(default)] pub Option<Color32>,
+);
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ItemMeta {
     pub item_uid: ItemUID,
     // As opposed to the interval in Item, which may get expanded for
@@ -160,7 +167,7 @@ pub struct ItemMeta {
     // entire duration of the original item, unexpanded and unsliced.
     pub original_interval: Interval,
     pub title: String,
-    pub fields: Vec<(FieldID, Field, Option<Color32>)>,
+    pub fields: Vec<ItemField>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
