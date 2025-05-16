@@ -19,13 +19,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::tile_manager::TileManager;
 use crate::data::{
-    DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
+    self, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
     ItemLink, ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID,
     UtilPoint,
 };
-use crate::deferred_data::{
-    CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource, TileResult,
-};
+use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource};
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };
@@ -64,7 +62,7 @@ use crate::timestamp::{
 struct Summary {
     entry_id: EntryID,
     color: Color32,
-    tiles: BTreeMap<TileID, Option<TileResult<SummaryTileData>>>,
+    tiles: BTreeMap<TileID, Option<data::Result<SummaryTileData>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -81,9 +79,9 @@ struct Slot {
     //  2. None: awaiting response.
     //  3. Some(Err(_)): response failed or returned with an error.
     //  4. Some(Ok(_)): successfully completed response.
-    tiles: BTreeMap<TileID, Option<TileResult<SlotTileData>>>,
-    tile_metas: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
-    tile_metas_full: BTreeMap<TileID, Option<TileResult<SlotMetaTileData>>>,
+    tiles: BTreeMap<TileID, Option<data::Result<SlotTileData>>>,
+    tile_metas: BTreeMap<TileID, Option<data::Result<SlotMetaTileData>>>,
+    tile_metas_full: BTreeMap<TileID, Option<data::Result<SlotMetaTileData>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -646,7 +644,7 @@ impl Slot {
         tile_id: TileID,
         config: &mut Config,
         full: bool,
-    ) -> Option<&TileResult<SlotMetaTileData>> {
+    ) -> Option<&data::Result<SlotMetaTileData>> {
         let metas = if full {
             &mut self.tile_metas_full
         } else {
@@ -2517,6 +2515,8 @@ impl eframe::App for ProfApp {
             // We made one request, so we know there is always zero or one
             // elements in this list.
             if let Some(info) = source.get_infos().pop() {
+                // TODO: show this in a more user-friendly way.
+                let info = info.expect("fetch_info failed");
                 let window = Window::new(source, info, windows.len() as u64);
                 if windows.is_empty() {
                     cx.total_interval = window.config.interval;

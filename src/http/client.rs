@@ -14,7 +14,8 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::data::{
-    DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    self, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile, SummaryTile,
+    TileID,
 };
 use crate::deferred_data::{
     DeferredDataSource, SlotMetaTileResponse, SlotTileResponse, SummaryTileResponse, TileRequest,
@@ -27,7 +28,7 @@ use crate::http::url::ensure_directory;
 pub struct HTTPClientDataSource {
     pub baseurl: Url,
     pub client: Client,
-    infos: Arc<Mutex<Vec<DataSourceInfo>>>,
+    infos: Arc<Mutex<Vec<data::Result<DataSourceInfo>>>>,
     summary_tiles: Arc<Mutex<Vec<SummaryTileResponse>>>,
     slot_tiles: Arc<Mutex<Vec<SlotTileResponse>>>,
     slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTileResponse>>>,
@@ -45,7 +46,7 @@ impl HTTPClientDataSource {
         }
     }
 
-    fn request<T>(&mut self, url: Url, container: Arc<Mutex<Vec<T>>>)
+    fn request<T>(&mut self, url: Url, container: Arc<Mutex<Vec<data::Result<T>>>>)
     where
         T: 'static + Sync + Send + for<'a> Deserialize<'a>,
     {
@@ -58,9 +59,9 @@ impl HTTPClientDataSource {
         fetch(
             request,
             move |response: Result<DataSourceResponse, String>| {
-                let f = response.unwrap().body.reader();
-                let f = zstd::Decoder::new(f).expect("zstd decompression failed");
-                let result = ciborium::from_reader(f).expect("cbor decoding failed");
+                let result = response
+                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|e| e.to_string()))
+                    .and_then(|f| ciborium::from_reader(f).map_err(|e| e.to_string()));
                 container.lock().unwrap().push(result);
             },
         );
@@ -84,8 +85,8 @@ impl HTTPClientDataSource {
             request,
             move |response: Result<DataSourceResponse, String>| {
                 let result = response
-                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|x| x.to_string()))
-                    .and_then(|f| ciborium::from_reader(f).map_err(|x| x.to_string()));
+                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|e| e.to_string()))
+                    .and_then(|f| ciborium::from_reader(f).map_err(|e| e.to_string()));
                 container.lock().unwrap().push((result, extra));
             },
         );
@@ -104,7 +105,7 @@ impl DeferredDataSource for HTTPClientDataSource {
         self.request::<DataSourceInfo>(url, self.infos.clone());
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         std::mem::take(&mut self.infos.lock().unwrap())
     }
 

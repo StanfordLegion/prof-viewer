@@ -220,13 +220,24 @@ pub struct DataSourceDescription {
     pub source_locator: Vec<String>,
 }
 
+pub type Result<T> = std::result::Result<T, String>;
+
 pub trait DataSource {
     fn fetch_description(&self) -> DataSourceDescription;
-    fn fetch_info(&self) -> DataSourceInfo;
-    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SummaryTile;
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTile;
-    fn fetch_slot_meta_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool)
-    -> SlotMetaTile;
+    fn fetch_info(&self) -> Result<DataSourceInfo>;
+    fn fetch_summary_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        full: bool,
+    ) -> Result<SummaryTile>;
+    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> Result<SlotTile>;
+    fn fetch_slot_meta_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        full: bool,
+    ) -> Result<SlotMetaTile>;
 }
 
 impl EntryID {
@@ -292,8 +303,8 @@ impl EntryID {
         true
     }
 
-    pub fn from_slug(s: &str) -> Result<Self, std::num::ParseIntError> {
-        let elts: Result<Vec<_>, _> = s.split('_').map(|x| x.parse::<i64>()).collect();
+    pub fn from_slug(s: &str) -> std::result::Result<Self, std::num::ParseIntError> {
+        let elts: std::result::Result<Vec<_>, _> = s.split('_').map(|x| x.parse::<i64>()).collect();
         Ok(Self(elts?))
     }
 }
@@ -382,8 +393,9 @@ impl From<std::num::ParseIntError> for SlugParseError {
 }
 
 impl TileID {
-    pub fn from_slug(s: &str) -> Result<Self, SlugParseError> {
-        let elts: Result<Vec<i64>, _> = s.split('_').map(|x| x.parse::<i64>()).collect();
+    pub fn from_slug(s: &str) -> std::result::Result<Self, SlugParseError> {
+        let elts: std::result::Result<Vec<i64>, _> =
+            s.split('_').map(|x| x.parse::<i64>()).collect();
         match elts?.as_slice() {
             [start, stop] => Ok(Self(Interval::new(Timestamp(*start), Timestamp(*stop)))),
             [_] => Err(SlugParseError::TooFewValues),

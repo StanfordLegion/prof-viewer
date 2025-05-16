@@ -1,13 +1,13 @@
 use std::sync::{Arc, Mutex};
 
-use crate::data::{DataSource, DataSourceDescription, DataSourceInfo, EntryID, TileID};
+use crate::data::{self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, TileID};
 use crate::deferred_data::{
     DeferredDataSource, SlotMetaTileResponse, SlotTileResponse, SummaryTileResponse, TileRequest,
 };
 
 pub struct ParallelDeferredDataSource<T: DataSource + Send + Sync + 'static> {
     data_source: Arc<T>,
-    infos: Arc<Mutex<Vec<DataSourceInfo>>>,
+    infos: Arc<Mutex<Vec<data::Result<DataSourceInfo>>>>,
     summary_tiles: Arc<Mutex<Vec<SummaryTileResponse>>>,
     slot_tiles: Arc<Mutex<Vec<SlotTileResponse>>>,
     slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTileResponse>>>,
@@ -39,7 +39,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
         });
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         std::mem::take(&mut self.infos.lock().unwrap())
     }
 
@@ -54,7 +54,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            summary_tiles.lock().unwrap().push((Ok(result), req));
+            summary_tiles.lock().unwrap().push((result, req));
         });
     }
 
@@ -73,7 +73,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            slot_tiles.lock().unwrap().push((Ok(result), req));
+            slot_tiles.lock().unwrap().push((result, req));
         });
     }
 
@@ -92,7 +92,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            slot_meta_tiles.lock().unwrap().push((Ok(result), req));
+            slot_meta_tiles.lock().unwrap().push((result, req));
         });
     }
 

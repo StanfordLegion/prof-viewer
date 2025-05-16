@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use legion_prof_viewer::data::{
-    DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
+    self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
     FieldSchema, Item, ItemField, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile,
     SlotTileData, SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
 };
@@ -269,11 +269,16 @@ impl DataSource for RandomDataSource {
             source_locator: vec!["Random Data Source".to_string()],
         }
     }
-    fn fetch_info(&self) -> DataSourceInfo {
-        self.info.clone()
+    fn fetch_info(&self) -> data::Result<DataSourceInfo> {
+        Ok(self.info.clone())
     }
 
-    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SummaryTile {
+    fn fetch_summary_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        _full: bool,
+    ) -> data::Result<SummaryTile> {
         let utilization = self.generate_summary(entry_id);
 
         let mut tile_utilization = Vec::new();
@@ -310,16 +315,21 @@ impl DataSource for RandomDataSource {
 
             last_point = Some(point);
         }
-        SummaryTile {
+        Ok(SummaryTile {
             entry_id: entry_id.clone(),
             tile_id,
             data: SummaryTileData {
                 utilization: tile_utilization,
             },
-        }
+        })
     }
 
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTile {
+    fn fetch_slot_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        _full: bool,
+    ) -> data::Result<SlotTile> {
         let items = &self.generate_slot(entry_id).0;
 
         let mut slot_items = Vec::new();
@@ -337,11 +347,11 @@ impl DataSource for RandomDataSource {
             slot_items.push(slot_row);
         }
 
-        SlotTile {
+        Ok(SlotTile {
             entry_id: entry_id.clone(),
             tile_id,
             data: SlotTileData { items: slot_items },
-        }
+        })
     }
 
     fn fetch_slot_meta_tile(
@@ -349,7 +359,7 @@ impl DataSource for RandomDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SlotMetaTile {
+    ) -> data::Result<SlotMetaTile> {
         let (items, item_metas) = self.generate_slot(entry_id);
 
         let mut slot_items = Vec::new();
@@ -365,10 +375,10 @@ impl DataSource for RandomDataSource {
             slot_items.push(slot_row);
         }
 
-        SlotMetaTile {
+        Ok(SlotMetaTile {
             entry_id: entry_id.clone(),
             tile_id,
             data: SlotMetaTileData { items: slot_items },
-        }
+        })
     }
 }
