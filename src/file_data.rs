@@ -38,7 +38,8 @@ impl DataSource for FileDataSource {
     }
     fn fetch_info(&self) -> DataSourceInfo {
         let path = self.basedir.join("info");
-        self.read_file::<DataSourceInfo>(&path).expect("fetch_info failed")
+        self.read_file::<DataSourceInfo>(&path)
+            .expect("fetch_info failed")
     }
 
     fn fetch_summary_tile(
