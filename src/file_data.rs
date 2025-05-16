@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::data::{
-    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
-    SummaryTile, TileID,
+    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotMetaTileResult,
+    SlotTile, SlotTileResult, SummaryTile, SummaryTileResult, TileID, TileResult,
 };
 use crate::http::schema::TileRequestRef;
 
@@ -20,13 +20,13 @@ impl FileDataSource {
         }
     }
 
-    fn read_file<T>(&self, path: impl AsRef<Path>) -> T
+    fn read_file<T>(&self, path: impl AsRef<Path>) -> TileResult<T>
     where
         T: for<'a> Deserialize<'a>,
     {
-        let f = File::open(path).expect("opening file failed");
-        let f = zstd::Decoder::new(f).expect("zstd decompression failed");
-        ciborium::from_reader(f).expect("cbor decoding failed")
+        let f = File::open(path).map_err(|e| e.to_string())?;
+        let f = zstd::Decoder::new(f).map_err(|e| e.to_string())?;
+        ciborium::from_reader(f).map_err(|e| e.to_string())
     }
 }
 
@@ -38,17 +38,22 @@ impl DataSource for FileDataSource {
     }
     fn fetch_info(&self) -> DataSourceInfo {
         let path = self.basedir.join("info");
-        self.read_file::<DataSourceInfo>(&path)
+        self.read_file::<DataSourceInfo>(&path).unwrap()
     }
 
-    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SummaryTile {
+    fn fetch_summary_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        _full: bool,
+    ) -> SummaryTileResult {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("summary_tile");
         path.push(req.to_slug());
         self.read_file::<SummaryTile>(&path)
     }
 
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTile {
+    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTileResult {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("slot_tile");
         path.push(req.to_slug());
@@ -60,7 +65,7 @@ impl DataSource for FileDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SlotMetaTile {
+    ) -> SlotMetaTileResult {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("slot_meta_tile");
         path.push(req.to_slug());

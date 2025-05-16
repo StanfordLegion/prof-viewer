@@ -54,7 +54,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            summary_tiles.lock().unwrap().push((Ok(result), req));
+            summary_tiles.lock().unwrap().push((result, req));
         });
     }
 
@@ -73,7 +73,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            slot_tiles.lock().unwrap().push((Ok(result), req));
+            slot_tiles.lock().unwrap().push((result, req));
         });
     }
 
@@ -92,7 +92,7 @@ impl<T: DataSource + Send + Sync + 'static> DeferredDataSource for ParallelDefer
                 tile_id,
                 full,
             };
-            slot_meta_tiles.lock().unwrap().push((Ok(result), req));
+            slot_meta_tiles.lock().unwrap().push((result, req));
         });
     }
 

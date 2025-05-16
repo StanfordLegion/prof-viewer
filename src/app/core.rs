@@ -21,11 +21,9 @@ use crate::app::tile_manager::TileManager;
 use crate::data::{
     DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
     ItemLink, ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID,
-    UtilPoint,
+    TileResult, UtilPoint,
 };
-use crate::deferred_data::{
-    CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource, TileResult,
-};
+use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource};
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };

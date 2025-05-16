@@ -220,13 +220,28 @@ pub struct DataSourceDescription {
     pub source_locator: Vec<String>,
 }
 
+pub type TileResult<T> = Result<T, String>;
+
+pub type SummaryTileResult = TileResult<SummaryTile>;
+pub type SlotTileResult = TileResult<SlotTile>;
+pub type SlotMetaTileResult = TileResult<SlotMetaTile>;
+
 pub trait DataSource {
     fn fetch_description(&self) -> DataSourceDescription;
     fn fetch_info(&self) -> DataSourceInfo;
-    fn fetch_summary_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SummaryTile;
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTile;
-    fn fetch_slot_meta_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool)
-    -> SlotMetaTile;
+    fn fetch_summary_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        full: bool,
+    ) -> SummaryTileResult;
+    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, full: bool) -> SlotTileResult;
+    fn fetch_slot_meta_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        full: bool,
+    ) -> SlotMetaTileResult;
 }
 
 impl EntryID {

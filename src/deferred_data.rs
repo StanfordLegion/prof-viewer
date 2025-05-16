@@ -4,7 +4,7 @@ use lru::LruCache;
 
 use crate::data::{
     DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
-    SummaryTile, TileID,
+    SummaryTile, TileID, TileResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,12 +14,7 @@ pub struct TileRequest {
     pub full: bool,
 }
 
-pub type TileResult<T> = Result<T, String>;
 pub type TileResponse<T> = (TileResult<T>, TileRequest);
-
-pub type SummaryTileResult = TileResult<SummaryTile>;
-pub type SlotTileResult = TileResult<SlotTile>;
-pub type SlotMetaTileResult = TileResult<SlotMetaTile>;
 
 pub type SummaryTileResponse = TileResponse<SummaryTile>;
 pub type SlotTileResponse = TileResponse<SlotTile>;
@@ -72,7 +67,7 @@ impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.summary_tiles.push((
-            Ok(self.data_source.fetch_summary_tile(entry_id, tile_id, full)),
+            self.data_source.fetch_summary_tile(entry_id, tile_id, full),
             TileRequest {
                 entry_id: entry_id.clone(),
                 tile_id,
@@ -87,7 +82,7 @@ impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.slot_tiles.push((
-            Ok(self.data_source.fetch_slot_tile(entry_id, tile_id, full)),
+            self.data_source.fetch_slot_tile(entry_id, tile_id, full),
             TileRequest {
                 entry_id: entry_id.clone(),
                 tile_id,
@@ -102,9 +97,8 @@ impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
 
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
         self.slot_meta_tiles.push((
-            Ok(self
-                .data_source
-                .fetch_slot_meta_tile(entry_id, tile_id, full)),
+            self.data_source
+                .fetch_slot_meta_tile(entry_id, tile_id, full),
             TileRequest {
                 entry_id: entry_id.clone(),
                 tile_id,
