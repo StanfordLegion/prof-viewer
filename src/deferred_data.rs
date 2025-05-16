@@ -3,8 +3,8 @@ use std::num::NonZeroUsize;
 use lru::LruCache;
 
 use crate::data::{
-    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
-    SummaryTile, TileID, TileResult,
+    self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
+    SummaryTile, TileID,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,7 +14,7 @@ pub struct TileRequest {
     pub full: bool,
 }
 
-pub type TileResponse<T> = (TileResult<T>, TileRequest);
+pub type TileResponse<T> = (data::Result<T>, TileRequest);
 
 pub type SummaryTileResponse = TileResponse<SummaryTile>;
 pub type SlotTileResponse = TileResponse<SlotTile>;
@@ -23,7 +23,7 @@ pub type SlotMetaTileResponse = TileResponse<SlotMetaTile>;
 pub trait DeferredDataSource {
     fn fetch_description(&self) -> DataSourceDescription;
     fn fetch_info(&mut self);
-    fn get_infos(&mut self) -> Vec<DataSourceInfo>;
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>>;
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
     fn get_summary_tiles(&mut self) -> Vec<SummaryTileResponse>;
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool);
@@ -34,7 +34,7 @@ pub trait DeferredDataSource {
 
 pub struct DeferredDataSourceWrapper<T: DataSource> {
     data_source: T,
-    infos: Vec<DataSourceInfo>,
+    infos: Vec<data::Result<DataSourceInfo>>,
     summary_tiles: Vec<SummaryTileResponse>,
     slot_tiles: Vec<SlotTileResponse>,
     slot_meta_tiles: Vec<SlotMetaTileResponse>,
@@ -61,7 +61,7 @@ impl<T: DataSource> DeferredDataSource for DeferredDataSourceWrapper<T> {
         self.infos.push(self.data_source.fetch_info());
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         std::mem::take(&mut self.infos)
     }
 
@@ -151,7 +151,7 @@ impl<T: DeferredDataSource> DeferredDataSource for CountingDeferredDataSource<T>
         self.data_source.fetch_info()
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         let result = self.data_source.get_infos();
         self.finish_request(result)
     }
@@ -221,7 +221,7 @@ impl<T: DeferredDataSource> DeferredDataSource for LruDeferredDataSource<T> {
         self.data_source.fetch_info()
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         self.data_source.get_infos()
     }
 
@@ -302,7 +302,7 @@ impl DeferredDataSource for Box<dyn DeferredDataSource> {
         self.as_mut().fetch_info()
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         self.as_mut().get_infos()
     }
 

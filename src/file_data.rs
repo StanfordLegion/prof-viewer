@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::data::{
-    DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotMetaTileResult,
-    SlotTile, SlotTileResult, SummaryTile, SummaryTileResult, TileID, TileResult,
+    self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, SlotMetaTile, SlotTile,
+    SummaryTile, TileID,
 };
 use crate::http::schema::TileRequestRef;
 
@@ -20,7 +20,7 @@ impl FileDataSource {
         }
     }
 
-    fn read_file<T>(&self, path: impl AsRef<Path>) -> TileResult<T>
+    fn read_file<T>(&self, path: impl AsRef<Path>) -> data::Result<T>
     where
         T: for<'a> Deserialize<'a>,
     {
@@ -36,10 +36,9 @@ impl DataSource for FileDataSource {
             source_locator: vec![String::from(self.basedir.to_string_lossy())],
         }
     }
-    fn fetch_info(&self) -> DataSourceInfo {
+    fn fetch_info(&self) -> data::Result<DataSourceInfo> {
         let path = self.basedir.join("info");
         self.read_file::<DataSourceInfo>(&path)
-            .expect("fetch_info failed")
     }
 
     fn fetch_summary_tile(
@@ -47,14 +46,19 @@ impl DataSource for FileDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SummaryTileResult {
+    ) -> data::Result<SummaryTile> {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("summary_tile");
         path.push(req.to_slug());
         self.read_file::<SummaryTile>(&path)
     }
 
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTileResult {
+    fn fetch_slot_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        _full: bool,
+    ) -> data::Result<SlotTile> {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("slot_tile");
         path.push(req.to_slug());
@@ -66,7 +70,7 @@ impl DataSource for FileDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SlotMetaTileResult {
+    ) -> data::Result<SlotMetaTile> {
         let req = TileRequestRef { entry_id, tile_id };
         let mut path = self.basedir.join("slot_meta_tile");
         path.push(req.to_slug());

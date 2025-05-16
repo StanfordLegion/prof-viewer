@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::data::{DataSourceInfo, EntryID, EntryIDSlug, EntryIndex, EntryInfo, TileID, TileSet};
+use crate::data::{
+    self, DataSourceInfo, EntryID, EntryIDSlug, EntryIndex, EntryInfo, TileID, TileSet,
+};
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 use crate::http::schema::TileRequestRef;
 use crate::timestamp::{Interval, Timestamp};
@@ -110,7 +112,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
-    fn check_info(&mut self) -> Option<DataSourceInfo> {
+    fn check_info(&mut self) -> Option<data::Result<DataSourceInfo>> {
         // We requested this once, so we know we'll get zero or one result
         self.data_source.get_infos().pop()
     }
@@ -171,7 +173,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         while info.is_none() {
             info = self.check_info();
         }
-        let mut info = info.unwrap();
+        let mut info = info.unwrap().expect("fetch_info failed");
 
         let entry_ids = walk_entry_list(&info.entry_info);
         for entry_id in &entry_ids {

@@ -8,7 +8,9 @@ use std::ptr::{null, null_mut};
 
 use nvtxw::nvtxw;
 
-use crate::data::{DataSourceInfo, EntryID, EntryIndex, EntryInfo, SlotMetaTile, SlotTile, TileID};
+use crate::data::{
+    self, DataSourceInfo, EntryID, EntryIndex, EntryInfo, SlotMetaTile, SlotTile, TileID,
+};
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 
 const LEGION_DOMAIN_NAME: &str = "Legion";
@@ -118,7 +120,7 @@ impl<T: DeferredDataSource> NVTXW<T> {
         }
     }
 
-    fn check_info(&mut self) -> Option<DataSourceInfo> {
+    fn check_info(&mut self) -> Option<data::Result<DataSourceInfo>> {
         // We requested this once, so we know we'll get zero or one result
         self.data_source.get_infos().pop()
     }
@@ -220,7 +222,7 @@ impl<T: DeferredDataSource> NVTXW<T> {
         while info.is_none() {
             info = self.check_info();
         }
-        let info = info.unwrap();
+        let info = info.unwrap().expect("fetch_info failed");
 
         let entry_ids = walk_entry_list(&info.entry_info);
 

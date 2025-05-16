@@ -7,10 +7,9 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use legion_prof_viewer::data::{
-    DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
-    FieldSchema, Item, ItemField, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData,
-    SlotMetaTileResult, SlotTile, SlotTileData, SlotTileResult, SummaryTile, SummaryTileData,
-    SummaryTileResult, TileID, TileSet, UtilPoint,
+    self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
+    FieldSchema, Item, ItemField, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile,
+    SlotTileData, SummaryTile, SummaryTileData, TileID, TileSet, UtilPoint,
 };
 
 use legion_prof_viewer::deferred_data::DeferredDataSourceWrapper;
@@ -270,8 +269,8 @@ impl DataSource for RandomDataSource {
             source_locator: vec!["Random Data Source".to_string()],
         }
     }
-    fn fetch_info(&self) -> DataSourceInfo {
-        self.info.clone()
+    fn fetch_info(&self) -> data::Result<DataSourceInfo> {
+        Ok(self.info.clone())
     }
 
     fn fetch_summary_tile(
@@ -279,7 +278,7 @@ impl DataSource for RandomDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SummaryTileResult {
+    ) -> data::Result<SummaryTile> {
         let utilization = self.generate_summary(entry_id);
 
         let mut tile_utilization = Vec::new();
@@ -325,7 +324,12 @@ impl DataSource for RandomDataSource {
         })
     }
 
-    fn fetch_slot_tile(&self, entry_id: &EntryID, tile_id: TileID, _full: bool) -> SlotTileResult {
+    fn fetch_slot_tile(
+        &self,
+        entry_id: &EntryID,
+        tile_id: TileID,
+        _full: bool,
+    ) -> data::Result<SlotTile> {
         let items = &self.generate_slot(entry_id).0;
 
         let mut slot_items = Vec::new();
@@ -355,7 +359,7 @@ impl DataSource for RandomDataSource {
         entry_id: &EntryID,
         tile_id: TileID,
         _full: bool,
-    ) -> SlotMetaTileResult {
+    ) -> data::Result<SlotMetaTile> {
         let (items, item_metas) = self.generate_slot(entry_id);
 
         let mut slot_items = Vec::new();

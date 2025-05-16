@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::data::{
-    DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemField,
+    self, DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemField,
     ItemLink, ItemUID, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::{
@@ -11,7 +11,7 @@ use crate::timestamp::Interval;
 
 pub struct MergeDeferredDataSource {
     data_sources: Vec<Box<dyn DeferredDataSource>>,
-    infos: Vec<VecDeque<DataSourceInfo>>,
+    infos: Vec<VecDeque<data::Result<DataSourceInfo>>>,
     mapping: Vec<u64>,
 }
 
@@ -208,7 +208,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
         }
     }
 
-    fn get_infos(&mut self) -> Vec<DataSourceInfo> {
+    fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         for (data_source, infos) in self.data_sources.iter_mut().zip(self.infos.iter_mut()) {
             infos.extend(data_source.get_infos());
         }
@@ -220,10 +220,10 @@ impl DeferredDataSource for MergeDeferredDataSource {
             let source_infos: Vec<_> = self
                 .infos
                 .iter_mut()
-                .map(|infos| infos.pop_front().unwrap())
+                .map(|infos| infos.pop_front().unwrap().expect("fetch_info failed"))
                 .collect();
             self.mapping = Self::compute_mapping(&source_infos);
-            result.push(Self::merge_infos(source_infos));
+            result.push(Ok(Self::merge_infos(source_infos)));
         }
         result
     }
