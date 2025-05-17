@@ -1,15 +1,13 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-#[cfg(target_arch = "wasm32")]
-compile_error!("DuckDB is not support on WASM");
-
 use std::ffi::OsString;
 use std::path::Path;
 
 use clap::Parser;
 
 use legion_prof_viewer::deferred_data::DeferredDataSource;
+#[cfg(feature = "duckdb")]
 use legion_prof_viewer::duckdb_data::DataSourceDuckDBWriter;
 use legion_prof_viewer::file_data::FileDataSource;
 use legion_prof_viewer::http::client::HTTPClientDataSource;
@@ -42,6 +40,7 @@ fn file_ds(path: impl AsRef<Path>) -> Box<dyn DeferredDataSource> {
     Box::new(ParallelDeferredDataSource::new(FileDataSource::new(path)))
 }
 
+#[cfg(feature = "duckdb")]
 fn main() {
     let args = Cli::parse();
 
@@ -55,4 +54,9 @@ fn main() {
     DataSourceDuckDBWriter::new(ds, args.output, args.force)
         .write()
         .expect("writing DuckDB database failed");
+}
+
+#[cfg(not(feature = "duckdb"))]
+fn main() {
+    panic!("Rebuild with --features=duckdb");
 }
