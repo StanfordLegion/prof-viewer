@@ -259,7 +259,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                         let field_name = sanitize(field_names.get(field_id).unwrap());
                         let field_type = FieldType::infer_type(&field);
                         new_fields.insert(field_name.clone(), field_type);
-                        (field_name, field_type)
+                        field_type
                     });
                 }
             }
@@ -271,15 +271,9 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         }
 
         // Prep a statement that includes all fields discovered so far
-        let mut columns: Vec<&str> = Vec::new();
         let mut slots = BTreeMap::new();
-        let base_columns = ["item_uid", "interval_start_ns", "interval_stop_ns", "title"];
-        for field_name in &base_columns {
-            columns.push(field_name);
-        }
-        for (field_id, (field_name, field_type)) in entry {
-            slots.insert(field_id, (columns.len(), field_type));
-            columns.push(field_name);
+        for (i, (field_id, field_type)) in entry.iter().enumerate() {
+            slots.insert(field_id, (i + 4, field_type));
         }
 
         let mut app = conn.appender(entry_id_slug)?;
@@ -288,7 +282,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         fn null() -> Box<dyn duckdb::ToSql> {
             Box::new(duckdb::types::Null)
         }
-        let mut values: Vec<_> = (0..columns.len()).map(|_| null()).collect();
+        let mut values: Vec<_> = (0..entry.len() + 4).map(|_| null()).collect();
         for row in &tile.data.items {
             for item in row {
                 values[0] = Box::new(item.item_uid.0);
@@ -388,7 +382,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 }
 
 struct SlotMetaTable {
-    fields: BTreeMap<EntryID, BTreeMap<FieldID, (String, FieldType)>>,
+    fields: BTreeMap<EntryID, BTreeMap<FieldID, FieldType>>,
 }
 
 impl SlotMetaTable {
