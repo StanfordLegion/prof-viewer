@@ -16,6 +16,7 @@ rust-version = "1.85"
 
 [features]
 default = ["client"]
+duckdb = ["dep:duckdb"]
 client = ["dep:reqwest", "dep:url"]
 server = ["dep:actix-cors", "dep:actix-web"]
 nvtxw = ["dep:nvtxw"]
@@ -43,9 +44,11 @@ percentage = "0.1.0"
 regex = "1.11.0"
 
 
-# client
-url = { version = "2", optional = true }
+# duckdb:
+duckdb = { version = "1.2.2", features = ["bundled"], optional = true }
 
+# client:
+url = { version = "2", optional = true }
 
 # server:
 actix-web = { version = "4", optional = true }
@@ -69,9 +72,13 @@ web-sys = "0.3.70"
 
 # examples:
 [dev-dependencies]
+# random_data:
 rand = { version = "0.8" }
 # transitive depedency, required for rand to support wasm
 getrandom = { version = "0.2", features = ["js"] }
+
+# prof2duckdb:
+clap = { version = "4", features = ["cargo", "derive"] }
 
 
 [profile.release]
