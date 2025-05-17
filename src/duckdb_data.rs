@@ -129,16 +129,13 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         let description = self.data_source.fetch_description();
         let description_str = description.source_locator.join(", ");
 
-        conn.execute(
-            "INSERT INTO data_source_info (interval_start_ns, interval_stop_ns, warning_message, description)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                info.interval.start.0,
-                info.interval.stop.0,
-                info.warning_message,
-                description_str
-            ],
-        )?;
+        let mut app = conn.appender("data_source_info")?;
+        app.append_row(params![
+            info.interval.start.0,
+            info.interval.stop.0,
+            info.warning_message,
+            description_str
+        ])?;
 
         Ok(())
     }
@@ -149,10 +146,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         info: &EntryInfo,
         entry_rows: &[EntryRow],
     ) -> duckdb::Result<()> {
-        let mut stmt = conn.prepare(
-            "INSERT INTO entry_info (entry_slug, short_name, long_name, parent_slug, type)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-        )?;
+        let mut app = conn.appender("entry_info")?;
 
         for EntryRow {
             entry_id,
@@ -177,7 +171,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     long_name,
                     ..
                 } => {
-                    stmt.execute(params![
+                    app.append_row(params![
                         entry_id_slug,
                         short_name,
                         long_name,
@@ -287,14 +281,8 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
             slots.insert(field_id, (columns.len(), field_type));
             columns.push(field_name);
         }
-        let placeholders: Vec<_> = (1..=columns.len()).map(|i| format!("?{}", i)).collect();
 
-        let mut stmt = conn.prepare(&format!(
-            "INSERT INTO {} ({}) VALUES ({})",
-            entry_id_slug,
-            columns.join(", "),
-            placeholders.join(", "),
-        ))?;
+        let mut app = conn.appender(entry_id_slug)?;
 
         // Important: not all items will have all fields; everything else should be NULL
         fn null() -> Box<dyn duckdb::ToSql> {
@@ -314,7 +302,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     let (slot, field_type) = slots.get(field_id).unwrap();
                     values[*slot] = field_type.sql_value(&field);
                 }
-                stmt.execute(duckdb::params_from_iter(&values))?;
+                app.append_row(duckdb::appender_params_from_iter(&values))?;
             }
         }
 
