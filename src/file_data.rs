@@ -24,7 +24,9 @@ impl FileDataSource {
     where
         T: for<'a> Deserialize<'a>,
     {
-        let f = File::open(path).map_err(|e| e.to_string())?;
+        let path = path.as_ref();
+        let f = File::open(path)
+            .map_err(|e| format!("error opening file '{}': {}", path.display(), e))?;
         let f = zstd::Decoder::new(f).map_err(|e| e.to_string())?;
         ciborium::from_reader(f).map_err(|e| e.to_string())
     }
