@@ -105,8 +105,8 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     fn create_info_tables(&self, conn: &Connection, info: &DataSourceInfo) -> duckdb::Result<()> {
         conn.execute(
             "CREATE TABLE data_source_info (
-                interval_start_ns BIGINT,
-                interval_stop_ns BIGINT,
+                interval_start_ns INT64,
+                interval_stop_ns INT64,
                 warning_message TEXT,
                 description TEXT
             )",
@@ -190,9 +190,9 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         conn.execute(
             &format!(
                 "CREATE TABLE {} (
-                    item_uid BIGINT,
-                    interval_start_ns BIGINT,
-                    interval_stop_ns BIGINT,
+                    item_uid INT64,
+                    interval_start_ns INT64,
+                    interval_stop_ns INT64,
                     title TEXT,
                 )",
                 entry_id_slug
@@ -413,7 +413,7 @@ impl FieldType {
 
     fn sql_type(&self) -> &'static str {
         match self {
-            FieldType::I64 => "BIGINT",
+            FieldType::I64 => "INT64",
             FieldType::U64 => "UBIGINT",
             FieldType::String => "TEXT",
             FieldType::Interval => "TEXT",
