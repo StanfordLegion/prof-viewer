@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use duckdb::{Connection, params};
 
 use crate::app::tile_manager::TileManager;
+use crate::arrow_data::{ArrowSchema, info_to_record_batch};
 use crate::data::{
     self, DataSourceInfo, EntryID, EntryInfo, Field, FieldID, FieldSchema, ItemField, SlotMetaTile,
 };
@@ -20,6 +21,7 @@ pub struct DataSourceDuckDBWriter<T: DeferredDataSource> {
     data_source: CountingDeferredDataSource<T>,
     path: PathBuf,
     force: bool,
+    schema: ArrowSchema,
 }
 
 fn sanitize_short(s: &str) -> String {
@@ -90,10 +92,12 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
 
 impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     pub fn new(data_source: T, path: impl AsRef<Path>, force: bool) -> Self {
+        let schema = ArrowSchema::new();
         Self {
             data_source: CountingDeferredDataSource::new(data_source),
             path: path.as_ref().to_owned(),
             force,
+            schema,
         }
     }
 
@@ -105,8 +109,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     fn create_info_tables(&self, conn: &Connection, info: &DataSourceInfo) -> duckdb::Result<()> {
         conn.execute(
             "CREATE TABLE data_source_info (
-                interval_start_ns INT64,
-                interval_stop_ns INT64,
+                interval STRUCT(start BIGINT, stop BIGINT),
                 warning_message TEXT,
                 description TEXT
             )",
@@ -128,12 +131,9 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         let description_str = description.source_locator.join(", ");
 
         let mut app = conn.appender("data_source_info")?;
-        app.append_row(params![
-            info.interval.start.0,
-            info.interval.stop.0,
-            info.warning_message,
-            description_str
-        ])?;
+        app.append_record_batch(
+            info_to_record_batch(info, &description_str, &self.schema).unwrap(),
+        )?;
 
         Ok(())
     }
@@ -190,9 +190,9 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         conn.execute(
             &format!(
                 "CREATE TABLE {} (
-                    item_uid INT64,
-                    interval_start_ns INT64,
-                    interval_stop_ns INT64,
+                    item_uid BIGINT,
+                    interval_start_ns BIGINT,
+                    interval_stop_ns BIGINT,
                     title TEXT,
                 )",
                 entry_id_slug
@@ -413,7 +413,7 @@ impl FieldType {
 
     fn sql_type(&self) -> &'static str {
         match self {
-            FieldType::I64 => "INT64",
+            FieldType::I64 => "BIGINT",
             FieldType::U64 => "UBIGINT",
             FieldType::String => "TEXT",
             FieldType::Interval => "TEXT",
