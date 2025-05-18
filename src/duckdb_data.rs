@@ -23,9 +23,7 @@ pub struct DataSourceDuckDBWriter<T: DeferredDataSource> {
 }
 
 fn sanitize_short(s: &str) -> String {
-    let mut result = s.replace(" ", "").replace("-", "_");
-    result.make_ascii_lowercase();
-    result
+    sanitize(&s.replace(" ", ""))
 }
 
 fn sanitize(s: &str) -> String {
@@ -251,15 +249,18 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         let field_names = field_schema.field_names();
 
         // Discover new fields (not seen in previous tiles)
-        let mut new_fields = BTreeMap::new();
+        let mut new_fields = Vec::new();
+        let mut slot = entry.len() + 4;
         for row in &tile.data.items {
             for item in row {
                 for ItemField(field_id, field, _) in &item.fields {
                     entry.entry(*field_id).or_insert_with(|| {
                         let field_name = sanitize(field_names.get(field_id).unwrap());
                         let field_type = FieldType::infer_type(&field);
-                        new_fields.insert(field_name.clone(), field_type);
-                        field_type
+                        new_fields.push((field_name.clone(), field_type));
+                        let result = (slot, field_type);
+                        slot += 1;
+                        result
                     });
                 }
             }
@@ -268,12 +269,6 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         // Add new fields to the table
         for (field_name, field_type) in &new_fields {
             self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
-        }
-
-        // Prep a statement that includes all fields discovered so far
-        let mut slots = BTreeMap::new();
-        for (i, (field_id, field_type)) in entry.iter().enumerate() {
-            slots.insert(field_id, (i + 4, field_type));
         }
 
         let mut app = conn.appender(entry_id_slug)?;
@@ -293,7 +288,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     *value = null();
                 }
                 for ItemField(field_id, field, _) in &item.fields {
-                    let (slot, field_type) = slots.get(field_id).unwrap();
+                    let (slot, field_type) = entry.get(field_id).unwrap();
                     values[*slot] = field_type.sql_value(&field);
                 }
                 app.append_row(duckdb::appender_params_from_iter(&values))?;
@@ -382,7 +377,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 }
 
 struct SlotMetaTable {
-    fields: BTreeMap<EntryID, BTreeMap<FieldID, FieldType>>,
+    fields: BTreeMap<EntryID, BTreeMap<FieldID, (usize, FieldType)>>,
 }
 
 impl SlotMetaTable {
