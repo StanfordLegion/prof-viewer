@@ -90,8 +90,8 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
     result
 }
 
-const INTERVAL_TYPE: &'static str = "STRUCT(start BIGINT, stop BIGINT)";
-const ITEM_LINK_TYPE: &'static str = "STRUCT(item_uid UBIGINT, title TEXT, interval STRUCT(start BIGINT, stop BIGINT), entry_slug TEXT)";
+const INTERVAL_TYPE: &str = "STRUCT(start BIGINT, stop BIGINT)";
+const ITEM_LINK_TYPE: &str = "STRUCT(item_uid UBIGINT, title TEXT, interval STRUCT(start BIGINT, stop BIGINT), entry_slug TEXT)";
 
 impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     pub fn new(data_source: T, path: impl AsRef<Path>, force: bool) -> Self {
@@ -266,7 +266,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                             slot += 1;
                             result
                         });
-                        let new_type = FieldType::infer_type(&field);
+                        let new_type = FieldType::infer_type(field);
                         new_field_types
                             .entry(*field_id)
                             .and_modify(|field_type: &mut FieldType| {
