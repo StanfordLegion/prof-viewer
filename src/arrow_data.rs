@@ -88,7 +88,7 @@ impl ArrowSchema {
             StructBuilder::from_fields(self.interval_fields.clone(), num_rows);
         let mut warning_message_builder = StringBuilder::new();
 
-        source_locator_builder.append_value(desc.source_locator.iter().map(|x| Some(x)));
+        source_locator_builder.append_value(desc.source_locator.iter().map(Some));
 
         FieldType::append_interval(&mut interval_builder, info.interval).unwrap();
 
@@ -201,6 +201,12 @@ impl ArrowSchema {
         }
 
         Ok(())
+    }
+}
+
+impl Default for ArrowSchema {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
