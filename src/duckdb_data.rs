@@ -106,12 +106,16 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         self.data_source.get_infos().pop()
     }
 
-    fn create_info_tables(&self, conn: &Connection, info: &DataSourceInfo) -> duckdb::Result<()> {
+    fn create_data_source_tables(
+        &self,
+        conn: &Connection,
+        info: &DataSourceInfo,
+    ) -> duckdb::Result<()> {
         conn.execute(
-            "CREATE TABLE data_source_info (
+            "CREATE TABLE data_source (
+                source_locator TEXT[],
                 interval STRUCT(start BIGINT, stop BIGINT),
                 warning_message TEXT,
-                description TEXT
             )",
             [],
         )?;
@@ -127,12 +131,10 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
             [],
         )?;
 
-        let description = self.data_source.fetch_description();
-        let description_str = description.source_locator.join(", ");
-
-        let mut app = conn.appender("data_source_info")?;
+        let mut app = conn.appender("data_source")?;
         app.append_record_batch(
-            info_to_record_batch(info, &description_str, &self.schema).unwrap(),
+            info_to_record_batch(&self.data_source.fetch_description(), info, &self.schema)
+                .unwrap(),
         )?;
 
         Ok(())
@@ -327,7 +329,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 
         let conn = Connection::open(&self.path).expect("Failed to open DuckDB database");
 
-        self.create_info_tables(&conn, &info)
+        self.create_data_source_tables(&conn, &info)
             .expect("Failed to create data source tables");
 
         let entry_rows = walk_entry_list(&info.entry_info);
