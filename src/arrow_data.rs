@@ -138,7 +138,9 @@ impl ArrowSchema {
             .collect();
 
         let mut slot_present = Vec::new();
+        let mut slot_duplicate = Vec::new();
         slot_present.resize(slot_fields.len(), false);
+        slot_duplicate.resize(slot_fields.len(), false);
         for row in &tile.data.items {
             for item in row {
                 item_uid_builder.append_value(item.item_uid.0);
@@ -149,6 +151,10 @@ impl ArrowSchema {
                 slot_present.resize(slot_fields.len(), false);
                 for ItemField(field_id, field, _) in &item.fields {
                     let slot = *field_slots.get(field_id).unwrap();
+                    if slot_present[slot] {
+                        slot_duplicate[slot] = true;
+                        continue;
+                    }
                     let (_, field_type) = &slot_fields[slot];
                     let builder = &mut slot_builders[slot];
                     field_type.append_value(builder, field).unwrap();
@@ -186,6 +192,13 @@ impl ArrowSchema {
         }
         let batch = RecordBatch::try_new(slot_meta_tile_schema, arrays).unwrap();
         app.append_record_batch(batch)?;
+
+        for (slot, duplicate) in slot_duplicate.iter().enumerate() {
+            if *duplicate {
+                let (field_name, _) = &slot_fields[slot];
+                println!("Warning: skipping duplicate entry for field {field_name}");
+            }
+        }
 
         Ok(())
     }
@@ -295,6 +308,14 @@ impl FieldType {
             (FieldType::String, data::Field::String(x)) => {
                 let builder = Self::cast::<StringBuilder>(builder)?;
                 builder.append_value(x);
+            }
+            (FieldType::String, data::Field::ItemLink(x)) => {
+                let builder = Self::cast::<StringBuilder>(builder)?;
+                // This is a hack because it means in a previous tile we saw
+                // only Strings and not ItemLinks, so we failed to meet the
+                // types early enough to get the correct type
+                println!("Warning: downgrading ItemLink to String in append_value");
+                builder.append_value(format!("{:?}", x));
             }
             (FieldType::Interval, data::Field::Interval(x)) => {
                 let builder = Self::cast::<StructBuilder>(builder)?;
