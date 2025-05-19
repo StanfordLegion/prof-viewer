@@ -7,7 +7,7 @@ use duckdb::{Connection, params};
 use crate::app::tile_manager::TileManager;
 use crate::arrow_data::{ArrowSchema, FieldType};
 use crate::data::{
-    self, DataSourceInfo, EntryID, EntryInfo, Field, FieldID, FieldSchema, ItemField, SlotMetaTile,
+    self, DataSourceInfo, EntryID, EntryInfo, FieldID, FieldSchema, ItemField, SlotMetaTile,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 
@@ -91,6 +91,7 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
 }
 
 const INTERVAL_TYPE: &'static str = "STRUCT(start BIGINT, stop BIGINT)";
+const ITEM_LINK_TYPE: &'static str = "STRUCT(item_uid UBIGINT, title TEXT, interval STRUCT(start BIGINT, stop BIGINT), entry_slug TEXT)";
 
 impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     pub fn new(data_source: T, path: impl AsRef<Path>, force: bool) -> Self {
@@ -238,65 +239,63 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 
         // Create the entry table (if it doesn't already exist)
         let mut new_entry = false;
-        let entry = tables
-            .fields
-            .entry(tile.entry_id.clone())
-            .or_insert_with(|| {
-                new_entry = true;
-                BTreeMap::new()
-            });
+        let (field_slots, slot_fields) =
+            tables
+                .fields
+                .entry(tile.entry_id.clone())
+                .or_insert_with(|| {
+                    new_entry = true;
+                    (BTreeMap::new(), Vec::new())
+                });
         if new_entry {
             self.create_entry_table(conn, entry_id_slug)?;
         }
 
         let field_names = field_schema.field_names();
 
-        // Discover new fields (not seen in previous tiles)
-        let mut new_fields = Vec::new();
-        let mut slot = entry.len() + 3;
+        // Discover new fields (not seen in previous tiles) and infer types
+        let mut slot = slot_fields.len();
+        let mut new_field_slots = BTreeMap::new();
+        let mut new_field_types = BTreeMap::new();
         for row in &tile.data.items {
             for item in row {
                 for ItemField(field_id, field, _) in &item.fields {
-                    entry.entry(*field_id).or_insert_with(|| {
-                        let field_name = sanitize(field_names.get(field_id).unwrap());
-                        let field_type = FieldType::infer_type(&field);
-                        new_fields.push((field_name.clone(), field_type));
-                        let result = (slot, field_type);
-                        slot += 1;
-                        result
-                    });
+                    if !field_slots.contains_key(field_id) {
+                        new_field_slots.entry(*field_id).or_insert_with(|| {
+                            let result = slot;
+                            slot += 1;
+                            result
+                        });
+                        let new_type = FieldType::infer_type(&field);
+                        new_field_types
+                            .entry(*field_id)
+                            .and_modify(|field_type: &mut FieldType| {
+                                *field_type = field_type.meet(new_type);
+                            })
+                            .or_insert(new_type);
+                    }
                 }
             }
         }
 
-        // // Add new fields to the table
-        // for (field_name, field_type) in &new_fields {
-        //     self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
-        // }
+        // Update table and tracking data structures
+        let mut new_slot_fields = BTreeMap::new();
+        for (field_id, slot) in &new_field_slots {
+            let field_type = new_field_types.get(field_id).unwrap();
+            let old = new_slot_fields.insert(*slot, (*field_id, field_type));
+            assert!(old.is_none());
+        }
+        field_slots.extend(new_field_slots);
+        for (slot, (field_id, field_type)) in new_slot_fields {
+            assert_eq!(slot, slot_fields.len());
+            let field_name = sanitize(field_names.get(&field_id).unwrap());
+            self.add_entry_field(conn, entry_id_slug, &field_name, *field_type)?;
+            slot_fields.push((field_name, *field_type));
+        }
 
         let mut app = conn.appender(entry_id_slug)?;
-        self.schema.append_slot_meta_tile(&mut app, &tile, entry)?;
-
-        // // Important: not all items will have all fields; everything else should be NULL
-        // fn null() -> Box<dyn duckdb::ToSql> {
-        //     Box::new(duckdb::types::Null)
-        // }
-        // let mut values: Vec<_> = (0..entry.len() + 3).map(|_| null()).collect();
-        // for row in &tile.data.items {
-        //     for item in row {
-        //         values[0] = Box::new(item.item_uid.0);
-        //         values[1] = Box::new(item.original_interval);
-        //         values[2] = Box::new(&item.title);
-        //         for value in &mut values[3..] {
-        //             *value = null();
-        //         }
-        //         for ItemField(field_id, field, _) in &item.fields {
-        //             let (slot, field_type) = entry.get(field_id).unwrap();
-        //             values[*slot] = field_type.sql_value(&field);
-        //         }
-        //         app.append_row(duckdb::appender_params_from_iter(&values))?;
-        //     }
-        // }
+        self.schema
+            .append_slot_meta_tile(&mut app, &tile, field_slots, slot_fields)?;
 
         Ok(())
     }
@@ -380,7 +379,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 }
 
 struct SlotMetaTable {
-    fields: BTreeMap<EntryID, BTreeMap<FieldID, (usize, FieldType)>>,
+    fields: BTreeMap<EntryID, (BTreeMap<FieldID, usize>, Vec<(String, FieldType)>)>,
 }
 
 impl SlotMetaTable {
@@ -398,6 +397,7 @@ impl FieldType {
             FieldType::U64 => "UBIGINT",
             FieldType::String => "TEXT",
             FieldType::Interval => INTERVAL_TYPE,
+            FieldType::ItemLink => ITEM_LINK_TYPE,
             FieldType::Vec => "TEXT",
             FieldType::Empty => "BOOLEAN",
         }
