@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use duckdb::{Connection, params};
 
 use crate::app::tile_manager::TileManager;
-use crate::arrow_data::{ArrowSchema, info_to_record_batch};
+use crate::arrow_data::{ArrowSchema, FieldType};
 use crate::data::{
     self, DataSourceInfo, EntryID, EntryInfo, Field, FieldID, FieldSchema, ItemField, SlotMetaTile,
 };
@@ -90,6 +90,8 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
     result
 }
 
+const INTERVAL_TYPE: &'static str = "STRUCT(start BIGINT, stop BIGINT)";
+
 impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     pub fn new(data_source: T, path: impl AsRef<Path>, force: bool) -> Self {
         let schema = ArrowSchema::new();
@@ -112,11 +114,14 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         info: &DataSourceInfo,
     ) -> duckdb::Result<()> {
         conn.execute(
-            "CREATE TABLE data_source (
-                source_locator TEXT[],
-                interval STRUCT(start BIGINT, stop BIGINT),
-                warning_message TEXT,
-            )",
+            &format!(
+                "CREATE TABLE data_source (
+                    source_locator TEXT[],
+                    interval {},
+                    warning_message TEXT,
+                )",
+                INTERVAL_TYPE,
+            ),
             [],
         )?;
 
@@ -132,11 +137,8 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         )?;
 
         let mut app = conn.appender("data_source")?;
-        app.append_record_batch(
-            info_to_record_batch(&self.data_source.fetch_description(), info, &self.schema)
-                .unwrap(),
-        )?;
-
+        self.schema
+            .append_info(&mut app, &self.data_source.fetch_description(), info)?;
         Ok(())
     }
 
@@ -192,12 +194,11 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         conn.execute(
             &format!(
                 "CREATE TABLE {} (
-                    item_uid BIGINT,
-                    interval_start_ns BIGINT,
-                    interval_stop_ns BIGINT,
+                    item_uid UBIGINT,
+                    interval {},
                     title TEXT,
                 )",
-                entry_id_slug
+                entry_id_slug, INTERVAL_TYPE,
             ),
             [],
         )?;
@@ -252,7 +253,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
 
         // Discover new fields (not seen in previous tiles)
         let mut new_fields = Vec::new();
-        let mut slot = entry.len() + 4;
+        let mut slot = entry.len() + 3;
         for row in &tile.data.items {
             for item in row {
                 for ItemField(field_id, field, _) in &item.fields {
@@ -268,34 +269,34 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
             }
         }
 
-        // Add new fields to the table
-        for (field_name, field_type) in &new_fields {
-            self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
-        }
+        // // Add new fields to the table
+        // for (field_name, field_type) in &new_fields {
+        //     self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
+        // }
 
         let mut app = conn.appender(entry_id_slug)?;
+        self.schema.append_slot_meta_tile(&mut app, &tile, entry)?;
 
-        // Important: not all items will have all fields; everything else should be NULL
-        fn null() -> Box<dyn duckdb::ToSql> {
-            Box::new(duckdb::types::Null)
-        }
-        let mut values: Vec<_> = (0..entry.len() + 4).map(|_| null()).collect();
-        for row in &tile.data.items {
-            for item in row {
-                values[0] = Box::new(item.item_uid.0);
-                values[1] = Box::new(item.original_interval.start.0);
-                values[2] = Box::new(item.original_interval.stop.0);
-                values[3] = Box::new(&item.title);
-                for value in &mut values[4..] {
-                    *value = null();
-                }
-                for ItemField(field_id, field, _) in &item.fields {
-                    let (slot, field_type) = entry.get(field_id).unwrap();
-                    values[*slot] = field_type.sql_value(&field);
-                }
-                app.append_row(duckdb::appender_params_from_iter(&values))?;
-            }
-        }
+        // // Important: not all items will have all fields; everything else should be NULL
+        // fn null() -> Box<dyn duckdb::ToSql> {
+        //     Box::new(duckdb::types::Null)
+        // }
+        // let mut values: Vec<_> = (0..entry.len() + 3).map(|_| null()).collect();
+        // for row in &tile.data.items {
+        //     for item in row {
+        //         values[0] = Box::new(item.item_uid.0);
+        //         values[1] = Box::new(item.original_interval);
+        //         values[2] = Box::new(&item.title);
+        //         for value in &mut values[3..] {
+        //             *value = null();
+        //         }
+        //         for ItemField(field_id, field, _) in &item.fields {
+        //             let (slot, field_type) = entry.get(field_id).unwrap();
+        //             values[*slot] = field_type.sql_value(&field);
+        //         }
+        //         app.append_row(duckdb::appender_params_from_iter(&values))?;
+        //     }
+        // }
 
         Ok(())
     }
@@ -390,50 +391,15 @@ impl SlotMetaTable {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum FieldType {
-    I64,
-    U64,
-    String,
-    Interval,
-    Vec,
-    Empty,
-}
-
 impl FieldType {
-    fn infer_type(field: &Field) -> Self {
-        match field {
-            Field::I64(..) => FieldType::I64,
-            Field::U64(..) => FieldType::U64,
-            Field::String(..) => FieldType::String,
-            Field::Interval(..) => FieldType::Interval,
-            Field::ItemLink(..) => FieldType::String, // for now map to string
-            Field::Vec(..) => FieldType::Vec,
-            Field::Empty => FieldType::Empty,
-        }
-    }
-
     fn sql_type(&self) -> &'static str {
         match self {
             FieldType::I64 => "BIGINT",
             FieldType::U64 => "UBIGINT",
             FieldType::String => "TEXT",
-            FieldType::Interval => "TEXT",
+            FieldType::Interval => INTERVAL_TYPE,
             FieldType::Vec => "TEXT",
             FieldType::Empty => "BOOLEAN",
-        }
-    }
-
-    fn sql_value<'a>(&self, field: &'a Field) -> Box<dyn duckdb::ToSql + 'a> {
-        match (self, field) {
-            (FieldType::I64, Field::I64(x)) => Box::new(x),
-            (FieldType::U64, Field::U64(x)) => Box::new(x),
-            (FieldType::String, Field::String(x)) => Box::new(x),
-            (FieldType::Interval, Field::Interval(x)) => Box::new(format!("{}", x)),
-            (FieldType::String, Field::ItemLink(x)) => Box::new(format!("{:?}", x)),
-            (FieldType::Vec, Field::Vec(x)) => Box::new(format!("{:?}", x)),
-            (FieldType::Empty, Field::Empty) => Box::new(true),
-            (t, v) => unreachable!("mismatch in SQL type {:?} vs value {:?}", t, v),
         }
     }
 }
