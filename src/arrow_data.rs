@@ -293,6 +293,17 @@ impl FieldType {
         })
     }
 
+    fn cast_field<'a, T: ArrayBuilder>(
+        builder: &'a mut StructBuilder,
+        field_idx: usize,
+        field_name: &str,
+        struct_name: &str,
+    ) -> Result<&'a mut T, ArrowError> {
+        builder.field_builder::<T>(field_idx).ok_or_else(|| {
+            ArrowError::SchemaError(format!("Could not get '{field_name}' field builder for {struct_name} struct. Check field order and type."))
+        })
+    }
+
     pub fn append_value(
         self,
         builder: &mut Box<dyn ArrayBuilder>,
@@ -390,13 +401,11 @@ impl FieldType {
         builder: &mut StructBuilder,
         interval: Interval,
     ) -> Result<(), ArrowError> {
-        let interval_start_builder = builder
-            .field_builder::<Int64Builder>(0).ok_or_else(|| ArrowError::SchemaError("Could not get 'start' field builder for Interval struct. Check field order and type.".to_string()))?;
-        interval_start_builder.append_value(interval.start.0);
+        Self::cast_field::<Int64Builder>(builder, 0, "start", "Interval")?
+            .append_value(interval.start.0);
 
-        let interval_stop_builder = builder
-            .field_builder::<Int64Builder>(1).ok_or_else(|| ArrowError::SchemaError("Could not get 'stop' field builder for Interval struct. Check field order and type.".to_string()))?;
-        interval_stop_builder.append_value(interval.start.0);
+        Self::cast_field::<Int64Builder>(builder, 1, "stop", "Interval")?
+            .append_value(interval.stop.0);
 
         builder.append(true);
 
@@ -404,13 +413,9 @@ impl FieldType {
     }
 
     pub fn append_interval_null(builder: &mut StructBuilder) -> Result<(), ArrowError> {
-        let interval_start_builder = builder
-            .field_builder::<Int64Builder>(0).ok_or_else(|| ArrowError::SchemaError("Could not get 'start' field builder for Interval struct. Check field order and type.".to_string()))?;
-        interval_start_builder.append_null();
+        Self::cast_field::<Int64Builder>(builder, 0, "start", "Interval")?.append_null();
 
-        let interval_stop_builder = builder
-            .field_builder::<Int64Builder>(1).ok_or_else(|| ArrowError::SchemaError("Could not get 'stop' field builder for Interval struct. Check field order and type.".to_string()))?;
-        interval_stop_builder.append_null();
+        Self::cast_field::<Int64Builder>(builder, 1, "stop", "Interval")?.append_null();
 
         builder.append(false);
 
@@ -421,21 +426,17 @@ impl FieldType {
         builder: &mut StructBuilder,
         link: &ItemLink,
     ) -> Result<(), ArrowError> {
-        let item_link_item_uid_builder = builder
-            .field_builder::<UInt64Builder>(0).ok_or_else(|| ArrowError::SchemaError("Could not get 'item_uid' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_item_uid_builder.append_value(link.item_uid.0);
+        Self::cast_field::<UInt64Builder>(builder, 0, "item_uid", "ItemLink")?
+            .append_value(link.item_uid.0);
 
-        let item_link_title_builder = builder
-            .field_builder::<StringBuilder>(1).ok_or_else(|| ArrowError::SchemaError("Could not get 'title' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_title_builder.append_value(&link.title);
+        Self::cast_field::<StringBuilder>(builder, 1, "title", "ItemLink")?
+            .append_value(&link.title);
 
-        let item_link_interval_builder = builder
-            .field_builder::<StructBuilder>(2).ok_or_else(|| ArrowError::SchemaError("Could not get 'interval' field builder for ItemLink struct. Check field order and type.".to_string()))?;
+        let item_link_interval_builder =
+            Self::cast_field::<StructBuilder>(builder, 2, "interval", "Interval")?;
         Self::append_interval(item_link_interval_builder, link.interval)?;
 
-        let item_link_entry_slug_builder = builder
-            .field_builder::<StringBuilder>(3).ok_or_else(|| ArrowError::SchemaError("Could not get 'entry_slug' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_entry_slug_builder.append_null(); // TODO
+        Self::cast_field::<StringBuilder>(builder, 3, "entry_slug", "ItemLink")?.append_null(); // TODO
 
         builder.append(true);
 
@@ -446,21 +447,15 @@ impl FieldType {
         builder: &mut StructBuilder,
         title: &str,
     ) -> Result<(), ArrowError> {
-        let item_link_item_uid_builder = builder
-            .field_builder::<UInt64Builder>(0).ok_or_else(|| ArrowError::SchemaError("Could not get 'item_uid' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_item_uid_builder.append_null();
+        Self::cast_field::<UInt64Builder>(builder, 0, "item_uid", "ItemLink")?.append_null();
 
-        let item_link_title_builder = builder
-            .field_builder::<StringBuilder>(1).ok_or_else(|| ArrowError::SchemaError("Could not get 'title' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_title_builder.append_value(title);
+        Self::cast_field::<StringBuilder>(builder, 1, "title", "ItemLink")?.append_value(title);
 
-        let item_link_interval_builder = builder
-            .field_builder::<StructBuilder>(2).ok_or_else(|| ArrowError::SchemaError("Could not get 'interval' field builder for ItemLink struct. Check field order and type.".to_string()))?;
+        let item_link_interval_builder =
+            Self::cast_field::<StructBuilder>(builder, 2, "interval", "Interval")?;
         Self::append_interval_null(item_link_interval_builder)?;
 
-        let item_link_entry_slug_builder = builder
-            .field_builder::<StringBuilder>(3).ok_or_else(|| ArrowError::SchemaError("Could not get 'entry_slug' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_entry_slug_builder.append_null();
+        Self::cast_field::<StringBuilder>(builder, 3, "entry_slug", "ItemLink")?.append_null();
 
         builder.append(true);
 
@@ -468,21 +463,15 @@ impl FieldType {
     }
 
     pub fn append_item_link_null(builder: &mut StructBuilder) -> Result<(), ArrowError> {
-        let item_link_item_uid_builder = builder
-            .field_builder::<UInt64Builder>(0).ok_or_else(|| ArrowError::SchemaError("Could not get 'item_uid' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_item_uid_builder.append_null();
+        Self::cast_field::<UInt64Builder>(builder, 0, "item_uid", "ItemLink")?.append_null();
 
-        let item_link_title_builder = builder
-            .field_builder::<StringBuilder>(1).ok_or_else(|| ArrowError::SchemaError("Could not get 'title' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_title_builder.append_null();
+        Self::cast_field::<StringBuilder>(builder, 1, "title", "ItemLink")?.append_null();
 
-        let item_link_interval_builder = builder
-            .field_builder::<StructBuilder>(2).ok_or_else(|| ArrowError::SchemaError("Could not get 'interval' field builder for ItemLink struct. Check field order and type.".to_string()))?;
+        let item_link_interval_builder =
+            Self::cast_field::<StructBuilder>(builder, 2, "interval", "Interval")?;
         Self::append_interval_null(item_link_interval_builder)?;
 
-        let item_link_entry_slug_builder = builder
-            .field_builder::<StringBuilder>(3).ok_or_else(|| ArrowError::SchemaError("Could not get 'entry_slug' field builder for ItemLink struct. Check field order and type.".to_string()))?;
-        item_link_entry_slug_builder.append_null();
+        Self::cast_field::<StringBuilder>(builder, 3, "entry_slug", "ItemLink")?.append_null();
 
         builder.append(false);
 
