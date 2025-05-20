@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use const_format::formatc;
 use duckdb::{Connection, params};
 
 use crate::app::tile_manager::TileManager;
@@ -90,9 +91,6 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
     result
 }
 
-const INTERVAL_TYPE: &str = "STRUCT(start BIGINT, stop BIGINT)";
-const ITEM_LINK_TYPE: &str = "STRUCT(item_uid UBIGINT, title TEXT, interval STRUCT(start BIGINT, stop BIGINT), entry_slug TEXT)";
-
 impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     pub fn new(data_source: T, path: impl AsRef<Path>, force: bool) -> Self {
         let schema = ArrowSchema::new();
@@ -121,7 +119,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     interval {},
                     warning_message TEXT,
                 )",
-                INTERVAL_TYPE,
+                FieldType::Interval.sql_type(),
             ),
             [],
         )?;
@@ -199,7 +197,8 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     interval {},
                     title TEXT,
                 )",
-                entry_id_slug, INTERVAL_TYPE,
+                entry_id_slug,
+                FieldType::Interval.sql_type(),
             ),
             [],
         )?;
@@ -391,13 +390,23 @@ impl SlotMetaTable {
 }
 
 impl FieldType {
-    fn sql_type(&self) -> &'static str {
+    const fn sql_type(&self) -> &'static str {
+        const fn interval() -> &'static str {
+            "STRUCT(start BIGINT, stop BIGINT)"
+        }
+        const fn item_link() -> &'static str {
+            formatc!(
+                "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
+                interval()
+            )
+        }
+
         match self {
             FieldType::I64 => "BIGINT",
             FieldType::U64 => "UBIGINT",
             FieldType::String => "TEXT",
-            FieldType::Interval => INTERVAL_TYPE,
-            FieldType::ItemLink => ITEM_LINK_TYPE,
+            FieldType::Interval => interval(),
+            FieldType::ItemLink => item_link(),
             FieldType::Vec => "TEXT",
             FieldType::Empty => "BOOLEAN",
         }
