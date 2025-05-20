@@ -381,8 +381,10 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     }
 }
 
+type SlotMetaFields = (BTreeMap<FieldID, usize>, Vec<(String, FieldType)>);
+
 struct SlotMetaTable {
-    fields: BTreeMap<EntryID, (BTreeMap<FieldID, usize>, Vec<(String, FieldType)>)>,
+    fields: BTreeMap<EntryID, SlotMetaFields>,
 }
 
 impl SlotMetaTable {
