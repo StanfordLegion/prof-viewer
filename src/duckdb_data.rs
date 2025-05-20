@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use const_format::formatc;
 use duckdb::{Connection, params};
+use itertools::Itertools;
+use regex::Regex;
 
 use crate::app::tile_manager::TileManager;
 use crate::arrow_data::{ArrowSchema, FieldType};
@@ -30,9 +33,8 @@ fn sanitize_short(s: &str) -> String {
 }
 
 fn sanitize(s: &str) -> String {
-    let mut result = s.replace(" ", "_").replace("-", "_");
-    result.make_ascii_lowercase();
-    result
+    static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9]+").unwrap());
+    RE.find_iter(s).map(|m| m.as_str()).join("_")
 }
 
 fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
