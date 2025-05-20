@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use duckdb::arrow::{
     array::{
@@ -193,10 +193,18 @@ impl ArrowSchema {
         let batch = RecordBatch::try_new(slot_meta_tile_schema, arrays).unwrap();
         app.append_record_batch(batch)?;
 
+        static DUPLICATE_WARNINGS: LazyLock<Mutex<BTreeSet<String>>> =
+            LazyLock::new(|| Mutex::new(BTreeSet::new()));
         for (slot, duplicate) in slot_duplicate.iter().enumerate() {
             if *duplicate {
                 let (field_name, _) = &slot_fields[slot];
-                println!("Warning: skipping duplicate entry for field {field_name}");
+                let mut warnings = DUPLICATE_WARNINGS.lock().unwrap();
+                if !warnings.contains(field_name) {
+                    println!(
+                        "Warning: skipping one or more duplicate entries for field {field_name}"
+                    );
+                    warnings.insert(field_name.to_string());
+                }
             }
         }
 
@@ -331,7 +339,12 @@ impl FieldType {
                 // This is a hack because it means in a previous tile we saw
                 // only Strings and not ItemLinks, so we failed to meet the
                 // types early enough to get the correct type
-                println!("Warning: downgrading ItemLink to String in append_value");
+                static WARNING: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
+                let mut warning = WARNING.lock().unwrap();
+                if !*warning {
+                    println!("Warning: downgrading ItemLink to String in append_value");
+                    *warning = true;
+                }
                 builder.append_value(format!("{:?}", x));
             }
             (FieldType::Interval, data::Field::Interval(x)) => {
