@@ -1,20 +1,25 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+#[cfg(feature = "duckdb")]
 use std::ffi::OsString;
+#[cfg(feature = "duckdb")]
 use std::path::Path;
 
+#[cfg(feature = "duckdb")]
 use clap::Parser;
 
-use legion_prof_viewer::deferred_data::DeferredDataSource;
 #[cfg(feature = "duckdb")]
-use legion_prof_viewer::duckdb_data::DataSourceDuckDBWriter;
-use legion_prof_viewer::file_data::FileDataSource;
-use legion_prof_viewer::http::client::HTTPClientDataSource;
-use legion_prof_viewer::parallel_data::ParallelDeferredDataSource;
+use legion_prof_viewer::{
+    deferred_data::DeferredDataSource, duckdb_data::DataSourceDuckDBWriter,
+    file_data::FileDataSource, http::client::HTTPClientDataSource,
+    parallel_data::ParallelDeferredDataSource,
+};
 
+#[cfg(feature = "duckdb")]
 use url::Url;
 
+#[cfg(feature = "duckdb")]
 #[derive(Debug, Clone, Parser)]
 struct Cli {
     #[arg(required = true, help = "URL or path to convert")]
@@ -32,16 +37,16 @@ struct Cli {
     force: bool,
 }
 
-fn http_ds(url: Url) -> Box<dyn DeferredDataSource> {
-    Box::new(HTTPClientDataSource::new(url))
-}
-
-fn file_ds(path: impl AsRef<Path>) -> Box<dyn DeferredDataSource> {
-    Box::new(ParallelDeferredDataSource::new(FileDataSource::new(path)))
-}
-
 #[cfg(feature = "duckdb")]
 fn main() {
+    fn http_ds(url: Url) -> Box<dyn DeferredDataSource> {
+        Box::new(HTTPClientDataSource::new(url))
+    }
+
+    fn file_ds(path: impl AsRef<Path>) -> Box<dyn DeferredDataSource> {
+        Box::new(ParallelDeferredDataSource::new(FileDataSource::new(path)))
+    }
+
     let args = Cli::parse();
 
     let ds = args.input.into_string()
