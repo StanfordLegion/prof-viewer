@@ -38,6 +38,7 @@ zstd = { version = "0.13", default-features = false }
 
 bytes = "1" # for reqwest binary data
 
+const_format = { version = "0.2.34", features = ["fmt"] }
 itertools = "0.14.0"
 lru = "0.14"
 percentage = "0.1.0"
