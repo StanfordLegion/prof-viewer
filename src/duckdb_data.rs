@@ -34,7 +34,9 @@ fn sanitize_short(s: &str) -> String {
 
 fn sanitize(s: &str) -> String {
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9]+").unwrap());
-    RE.find_iter(s).map(|m| m.as_str()).join("_")
+    let mut result = RE.find_iter(s).map(|m| m.as_str()).join("_");
+    result.make_ascii_lowercase();
+    result
 }
 
 fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
