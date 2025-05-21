@@ -371,10 +371,17 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     .fetch_slot_meta_tile(entry_id, *tile_id, FULL);
             }
 
-            while self.data_source.outstanding_requests() > 0 {
+            const MAX_IN_FLIGHT_REQUESTS: u64 = 100;
+
+            while self.data_source.outstanding_requests() > MAX_IN_FLIGHT_REQUESTS {
                 self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut tables)
                     .expect("creating slot meta table failed");
             }
+        }
+
+        while self.data_source.outstanding_requests() > 0 {
+            self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut tables)
+                .expect("creating slot meta table failed");
         }
 
         Ok(())
