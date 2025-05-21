@@ -21,13 +21,15 @@ pub fn fetch(
         let response = request
             .send()
             .await
-            .map_err(|e| format!("request failed: {e}"))
-            .and_then(async |r| {
-                r.bytes()
-                    .await
-                    .map_err(|e| format!("unable to get bytes: {e}"))
-            })
-            .map(|r| DataSourceResponse { body: r });
+            .map_err(|e| format!("request failed: {e}"));
+        let response = match response {
+            Ok(r) => r
+                .bytes()
+                .await
+                .map_err(|e| format!("unable to get bytes: {e}")),
+            Err(e) => Err(e),
+        };
+        let response = response.map(|r| DataSourceResponse { body: r });
 
         on_done(response)
     });
