@@ -7,12 +7,12 @@ pub fn fetch(
     on_done: Box<dyn FnOnce(Result<DataSourceResponse, String>) + Send>,
 ) {
     rayon::spawn(move || {
-        let result = request
+        let response = request
             .send()
-            .expect("request failed")
-            .bytes()
-            .expect("unable to get bytes");
+            .map_err(|e| format!("request failed: {e}"))
+            .and_then(|r| r.bytes().map_err(|e| format!("unable to get bytes: {e}")))
+            .map(|r| DataSourceResponse { body: r });
 
-        on_done(Ok(DataSourceResponse { body: result }))
+        on_done(response)
     });
 }

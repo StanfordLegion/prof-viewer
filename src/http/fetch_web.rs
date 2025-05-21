@@ -21,13 +21,14 @@ pub fn fetch(
         let result = request
             .send()
             .await
-            .expect("request failed")
-            .bytes()
-            .await
-            .expect("unable to get bytes");
+            .map_err(|e| format!("request failed: {e}"))
+            .and_then(|r| {
+                r.bytes()
+                    .await
+                    .map_err(|e| format!("unable to get bytes: {e}"))
+            })
+            .map(|r| DataSourceResponse { body: r });
 
-        let res = Ok(DataSourceResponse { body: result });
-
-        on_done(res)
+        on_done(response)
     });
 }
