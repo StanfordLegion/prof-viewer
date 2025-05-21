@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use const_format::formatc;
 use duckdb::{Connection, params};
 use itertools::Itertools;
 use regex::Regex;
@@ -52,7 +52,7 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryRow> {
                 short_name, slots, ..
             } => {
                 let entry_id_slug = if let Some(parent) = parent_id_slug {
-                    format!("{}_{}", parent, sanitize(short_name))
+                    format!("{}_{}", parent, sanitize_short(short_name))
                 } else {
                     sanitize_short(short_name)
                 };
@@ -123,7 +123,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     interval {},
                     warning_message TEXT,
                 )",
-                FieldType::Interval.sql_type(),
+                SqlType(FieldType::Interval),
             ),
             [],
         )?;
@@ -202,7 +202,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     title TEXT,
                 )",
                 entry_id_slug,
-                FieldType::Interval.sql_type(),
+                SqlType(FieldType::Interval),
             ),
             [],
         )?;
@@ -222,7 +222,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                 "ALTER TABLE {} ADD COLUMN {} {}",
                 entry_id_slug,
                 field_name,
-                field_type.sql_type(),
+                SqlType(field_type),
             ),
             [],
         )?;
@@ -395,26 +395,23 @@ impl SlotMetaTable {
     }
 }
 
-impl FieldType {
-    const fn sql_type(&self) -> &'static str {
-        const fn interval() -> &'static str {
-            "STRUCT(start BIGINT, stop BIGINT)"
-        }
-        const fn item_link() -> &'static str {
-            formatc!(
-                "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
-                interval()
-            )
-        }
+#[derive(Debug, Copy, Clone)]
+struct SqlType(FieldType);
 
-        match self {
-            FieldType::I64 => "BIGINT",
-            FieldType::U64 => "UBIGINT",
-            FieldType::String => "TEXT",
-            FieldType::Interval => interval(),
-            FieldType::ItemLink => item_link(),
-            FieldType::Vec => "TEXT",
-            FieldType::Empty => "BOOLEAN",
+impl fmt::Display for SqlType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            FieldType::I64 => write!(f, "BIGINT"),
+            FieldType::U64 => write!(f, "UBIGINT"),
+            FieldType::String => write!(f, "TEXT"),
+            FieldType::Interval => write!(f, "STRUCT(start BIGINT, stop BIGINT)"),
+            FieldType::ItemLink => write!(
+                f,
+                "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
+                SqlType(FieldType::Interval)
+            ),
+            FieldType::Vec => write!(f, "TEXT"),
+            FieldType::Empty => write!(f, "BOOLEAN"),
         }
     }
 }
