@@ -34,6 +34,36 @@ pub struct HTTPClientDataSource {
     slot_meta_tiles: Arc<Mutex<Vec<SlotMetaTileResponse>>>,
 }
 
+fn decode_zstd<R>(f: R) -> Result<zstd::Decoder<'static, std::io::BufReader<R>>, String>
+where
+    R: std::io::Read,
+{
+    zstd::Decoder::new(f).map_err(|e| format!("zstd decode failed: {}", e))
+}
+
+fn decode_ciborium<R, T>(mut f: R) -> data::Result<T>
+where
+    R: std::io::Read,
+    T: 'static + Sync + Send + for<'a> Deserialize<'a>,
+{
+    // To support older profiles we attempt to decode twice,
+    // with/without the Result wrapper.
+
+    let mut bytes = Vec::new();
+    f.read_to_end(&mut bytes)
+        .map_err(|e| format!("zstd decode failed: {}", e))?;
+
+    match ciborium::from_reader::<data::Result<T>, &[u8]>(&bytes) {
+        Ok(x) => x,
+        Err(e) => {
+            // See if we can decode it the other way, otherwise return the
+            // original error.
+            ciborium::from_reader::<T, &[u8]>(&bytes)
+                .map_err(|_| format!("ciborium decode failed: {}", e))
+        }
+    }
+}
+
 impl HTTPClientDataSource {
     pub fn new(baseurl: Url) -> Self {
         Self {
@@ -60,8 +90,8 @@ impl HTTPClientDataSource {
             request,
             move |response: Result<DataSourceResponse, String>| {
                 let result = response
-                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|e| e.to_string()))
-                    .and_then(|f| ciborium::from_reader(f).map_err(|e| e.to_string()));
+                    .and_then(|r| decode_zstd(r.body.reader()))
+                    .and_then(decode_ciborium);
                 container.lock().unwrap().push(result);
             },
         );
@@ -85,8 +115,8 @@ impl HTTPClientDataSource {
             request,
             move |response: Result<DataSourceResponse, String>| {
                 let result = response
-                    .and_then(|r| zstd::Decoder::new(r.body.reader()).map_err(|e| e.to_string()))
-                    .and_then(|f| ciborium::from_reader(f).map_err(|e| e.to_string()));
+                    .and_then(|r| decode_zstd(r.body.reader()))
+                    .and_then(decode_ciborium);
                 container.lock().unwrap().push((result, extra));
             },
         );
