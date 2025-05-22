@@ -121,6 +121,10 @@ impl FieldSchema {
         self.field_ids.contains_key(field_name)
     }
 
+    pub fn field_names(&self) -> &BTreeMap<FieldID, String> {
+        &self.field_names
+    }
+
     pub fn searchable(&self) -> &BTreeSet<FieldID> {
         &self.searchable
     }
