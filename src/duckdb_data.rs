@@ -230,6 +230,22 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         Ok(())
     }
 
+    fn upgrade_entry_field(
+        &self,
+        conn: &Connection,
+        entry_id_slug: &str,
+        field_name: &str,
+        old_type: FieldType,
+        new_type: FieldType,
+    ) -> duckdb::Result<()> {
+        conn.execute(
+            &SqlType(old_type).upgrade_column(entry_id_slug, field_name, SqlType(new_type)),
+            [],
+        )?;
+
+        Ok(())
+    }
+
     fn write_slot_meta_tile(
         &self,
         conn: &Connection,
@@ -257,43 +273,43 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         let field_names = field_schema.field_names();
 
         // Discover new fields (not seen in previous tiles) and infer types
-        let mut slot = slot_fields.len();
-        let mut new_field_slots = BTreeMap::new();
-        let mut new_field_types = BTreeMap::new();
+        let last_slot = slot_fields.len();
+        let mut next_slot = last_slot;
+        let mut upgrade_slots_from_type = BTreeMap::new();
         for row in &tile.data.items {
             for item in row {
                 for ItemField(field_id, field, _) in &item.fields {
-                    if !field_slots.contains_key(field_id) {
-                        new_field_slots.entry(*field_id).or_insert_with(|| {
-                            let result = slot;
-                            slot += 1;
-                            result
-                        });
-                        let new_type = FieldType::infer_type(field);
-                        new_field_types
-                            .entry(*field_id)
-                            .and_modify(|field_type: &mut FieldType| {
-                                *field_type = field_type.meet(new_type);
-                            })
-                            .or_insert(new_type);
+                    let slot = *field_slots.entry(*field_id).or_insert_with(|| {
+                        let slot = next_slot;
+                        next_slot += 1;
+                        slot
+                    });
+                    let field_type = FieldType::infer_type(field);
+                    if slot == slot_fields.len() {
+                        let field_name = sanitize(field_names.get(&field_id).unwrap());
+                        slot_fields.push((field_name, field_type));
+                    } else {
+                        let old_type = slot_fields[slot].1;
+                        let meet_type = old_type.meet(field_type);
+                        if old_type != meet_type {
+                            upgrade_slots_from_type.entry(slot).or_insert(old_type);
+                            slot_fields[slot].1 = meet_type;
+                        }
                     }
                 }
             }
         }
 
-        // Update table and tracking data structures
-        let mut new_slot_fields = BTreeMap::new();
-        for (field_id, slot) in &new_field_slots {
-            let field_type = new_field_types.get(field_id).unwrap();
-            let old = new_slot_fields.insert(*slot, (*field_id, field_type));
-            assert!(old.is_none());
+        // Insert new fields discovered since last call
+        for slot in last_slot..next_slot {
+            let (field_name, field_type) = &slot_fields[slot];
+            self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
         }
-        field_slots.extend(new_field_slots);
-        for (slot, (field_id, field_type)) in new_slot_fields {
-            assert_eq!(slot, slot_fields.len());
-            let field_name = sanitize(field_names.get(&field_id).unwrap());
-            self.add_entry_field(conn, entry_id_slug, &field_name, *field_type)?;
-            slot_fields.push((field_name, *field_type));
+
+        // Upgrade fields that have changed type
+        for (slot, old_type) in upgrade_slots_from_type {
+            let (field_name, new_type) = &slot_fields[slot];
+            self.upgrade_entry_field(conn, entry_id_slug, field_name, old_type, *new_type)?;
         }
 
         let mut app = conn.appender(entry_id_slug)?;
@@ -419,6 +435,25 @@ impl fmt::Display for SqlType {
             ),
             FieldType::Vec => write!(f, "TEXT"),
             FieldType::Empty => write!(f, "BOOLEAN"),
+        }
+    }
+}
+
+impl SqlType {
+    fn upgrade_column(&self, table_name: &str, column_name: &str, to_type: SqlType) -> String {
+        match (self, to_type) {
+            (SqlType(FieldType::U64), SqlType(FieldType::ItemLink))
+            | (SqlType(FieldType::String), SqlType(FieldType::ItemLink)) => format!(
+                "ALTER TABLE {table_name}
+                     ALTER COLUMN {column_name} TYPE {to_type}
+                     USING {{
+                         'item_uid': NULL,
+                         'title': {column_name},
+                         'interval': {{'start': NULL, 'stop': NULL, 'duration': NULL}},
+                         'entry_slug': NULL,
+                     }};"
+            ),
+            _ => panic!("don't know how to perform upgrade from {self:?} to {to_type:?}"),
         }
     }
 }

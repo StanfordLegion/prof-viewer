@@ -221,7 +221,7 @@ impl Default for ArrowSchema {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FieldType {
     I64,
     U64,
@@ -336,19 +336,6 @@ impl FieldType {
             (FieldType::String, data::Field::String(x)) => {
                 let builder = Self::cast::<StringBuilder>(builder)?;
                 builder.append_value(x);
-            }
-            (FieldType::String, data::Field::ItemLink(x)) => {
-                let builder = Self::cast::<StringBuilder>(builder)?;
-                // This is a hack because it means in a previous tile we saw
-                // only Strings and not ItemLinks, so we failed to meet the
-                // types early enough to get the correct type
-                static WARNING: LazyLock<Mutex<bool>> = LazyLock::new(|| Mutex::new(false));
-                let mut warning = WARNING.lock().unwrap();
-                if !*warning {
-                    println!("Warning: downgrading ItemLink to String in append_value");
-                    *warning = true;
-                }
-                builder.append_value(format!("{:?}", x));
             }
             (FieldType::Interval, data::Field::Interval(x)) => {
                 let builder = Self::cast::<StructBuilder>(builder)?;
