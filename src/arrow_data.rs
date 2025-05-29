@@ -33,9 +33,12 @@ impl ArrowSchema {
         // Interval data type
         let interval_field_start = Field::new("start", DataType::Int64, false);
         let interval_field_stop = Field::new("stop", DataType::Int64, false);
+        // Some versions of Legion generate negative intervals, so we have to represent this as signed
+        let interval_field_duration = Field::new("duration", DataType::Int64, false);
         let interval_fields = Fields::from(vec![
             interval_field_start.clone(),
             interval_field_stop.clone(),
+            interval_field_duration.clone(),
         ]);
         let interval_data_type = DataType::Struct(interval_fields.clone());
 
@@ -420,6 +423,10 @@ impl FieldType {
         Self::cast_field::<Int64Builder>(builder, 1, "stop", "Interval")?
             .append_value(interval.stop.0);
 
+        let duration = interval.stop.0 - interval.start.0;
+        Self::cast_field::<Int64Builder>(builder, 2, "duration", "Interval")?
+            .append_value(duration);
+
         builder.append(true);
 
         Ok(())
@@ -429,6 +436,8 @@ impl FieldType {
         Self::cast_field::<Int64Builder>(builder, 0, "start", "Interval")?.append_null();
 
         Self::cast_field::<Int64Builder>(builder, 1, "stop", "Interval")?.append_null();
+
+        Self::cast_field::<Int64Builder>(builder, 2, "duration", "Interval")?.append_null();
 
         builder.append(false);
 

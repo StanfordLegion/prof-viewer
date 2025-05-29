@@ -411,7 +411,7 @@ impl fmt::Display for SqlType {
             FieldType::I64 => write!(f, "BIGINT"),
             FieldType::U64 => write!(f, "UBIGINT"),
             FieldType::String => write!(f, "TEXT"),
-            FieldType::Interval => write!(f, "STRUCT(start BIGINT, stop BIGINT)"),
+            FieldType::Interval => write!(f, "STRUCT(start BIGINT, stop BIGINT, duration BIGINT)"),
             FieldType::ItemLink => write!(
                 f,
                 "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
