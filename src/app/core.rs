@@ -2668,7 +2668,7 @@ impl eframe::App for ProfApp {
 
                 let mut enabled = true;
                 egui::Window::new(short_title)
-                    .id(egui::Id::new(item.loc.item_uid.0))
+                    .id(egui::Id::new(("details_window", item.loc.item_uid.0)))
                     .open(&mut enabled)
                     .resizable(true)
                     .show(ctx, |ui| {
