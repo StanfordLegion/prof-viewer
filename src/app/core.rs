@@ -293,8 +293,6 @@ struct Context {
 
     item_link_mode: ItemLinkNavigationMode,
 
-    toggle_dark_mode: bool,
-
     debug: bool,
 
     #[serde(skip)]
@@ -1926,13 +1924,6 @@ impl ProfApp {
             result.last_update = Some(Instant::now());
         }
 
-        let theme = if result.cx.toggle_dark_mode {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        };
-        cc.egui_ctx.set_visuals(theme);
-
         // Set solid scroll bar (default from egui pre-0.24)
         // The new default "thin" style isn't clickable with our canvas widget
         cc.egui_ctx.style_mut(|style| {
@@ -2593,25 +2584,14 @@ impl eframe::App for ProfApp {
 
                 ui.horizontal(|ui| {
                     egui::widgets::global_theme_preference_buttons(ui);
-                    // let mut current_theme = if cx.toggle_dark_mode {
-                    //     egui::Visuals::dark()
-                    // } else {
-                    //     egui::Visuals::light()
-                    // };
-
-                    // current_theme.light_dark_radio_buttons(ui);
-                    // if current_theme.dark_mode != cx.toggle_dark_mode {
-                    //     cx.toggle_dark_mode = current_theme.dark_mode;
-                    //     ctx.set_visuals(current_theme);
-                    // }
-
-                    ui.toggle_value(&mut cx.debug, "🛠 Debug");
                 });
 
                 ui.horizontal(|ui| {
                     if ui.button("Show Controls").clicked() {
                         cx.show_controls = true;
                     }
+
+                    ui.toggle_value(&mut cx.debug, "🛠 Debug");
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
