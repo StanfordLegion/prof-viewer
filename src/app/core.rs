@@ -293,8 +293,6 @@ struct Context {
 
     item_link_mode: ItemLinkNavigationMode,
 
-    toggle_dark_mode: bool,
-
     debug: bool,
 
     #[serde(skip)]
@@ -787,13 +785,14 @@ impl Slot {
                     Ok(t) => t,
                     Err(e) => {
                         warn!("{}", e);
-                        ui.show_tooltip("task_tooltip", &item_rect, e);
+                        ui.show_tooltip("task_tooltip_error", &item_rect, e);
                         return hover_pos;
                     }
                 };
 
                 let item_meta = &tile_meta.items[row][item_idx];
-                ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
+                let tooltip_id = ("task_tooltip", item_meta.item_uid.0);
+                ui.show_tooltip_ui(tooltip_id, &item_rect, |ui| {
                     ui.label(&item_meta.title);
                     if cx.debug {
                         ui.label(format!("Item UID: {}", item_meta.item_uid.0));
@@ -1780,7 +1779,7 @@ impl Window {
             ui.label("Search field:");
             let schema = &self.config.field_schema;
             let search_field = &mut self.config.search_state.search_field;
-            egui::ComboBox::from_id_source("Search field")
+            egui::ComboBox::from_id_salt("Search field")
                 .selected_text(schema.get_name(*search_field).unwrap())
                 .show_ui(ui, |ui| {
                     for field in schema.searchable() {
@@ -1925,13 +1924,6 @@ impl ProfApp {
         {
             result.last_update = Some(Instant::now());
         }
-
-        let theme = if result.cx.toggle_dark_mode {
-            egui::Visuals::dark()
-        } else {
-            egui::Visuals::light()
-        };
-        cc.egui_ctx.set_visuals(theme);
 
         // Set solid scroll bar (default from egui pre-0.24)
         // The new default "thin" style isn't clickable with our canvas widget
@@ -2209,8 +2201,6 @@ impl ProfApp {
                 .line_segment([mid_bottom, bottom], visuals.fg_stroke);
 
             // Show timestamp popup
-
-            const HOVER_PADDING: f32 = 8.0;
             let time = (hover.x - rect.left()) / rect.width();
             let time = cx.view_interval.lerp(time);
 
@@ -2226,40 +2216,7 @@ impl ProfApp {
                 format!("t={time_units}")
             };
 
-            let label_size = {
-                let label_margin = ui.spacing().window_margin;
-                let available_width = ui.available_width() - 2.0 * label_margin.sum().x;
-                let label_text: egui::WidgetText = (&label_text).into();
-                let label_text =
-                    label_text.into_galley(ui, None, available_width, egui::TextStyle::Body);
-                label_text.size() + 2.0 * label_margin.sum()
-            };
-
-            // Hack: This avoids an issue where popups displayed normally are
-            // forced to stack, even when an explicit position is
-            // requested. Instead we display the popup manually via black magic
-            let popup_size = label_size.x;
-            let mut popup_rect = Rect::from_min_size(
-                Pos2::new(top.x + HOVER_PADDING, top.y),
-                Vec2::new(popup_size, 100.0),
-            );
-            // This is a hack to keep the time viewer on the screen when we
-            // approach the right edge.
-            if popup_rect.right() > ui.min_rect().right() {
-                popup_rect = popup_rect
-                    .translate(Vec2::new(ui.min_rect().right() - popup_rect.right(), 0.0));
-            }
-            let mut popup_ui = egui::Ui::new(
-                ui.ctx().clone(),
-                ui.layer_id(),
-                ui.id(),
-                popup_rect,
-                popup_rect.expand(16.0),
-                ui.stack().info.clone(),
-            );
-            egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
-                ui.label(label_text);
-            });
+            ui.show_tooltip_at("timestamp_tooltip", top, label_text);
         }
     }
 
@@ -2303,7 +2260,7 @@ impl ProfApp {
                 show_row("Reset Vertical Spacing", "Ctrl + Alt + 0");
                 show_row("Toggle This Window", "H");
                 show_row_ui(&mut body, "Item Link Zoom or Pan", |ui: &mut _| {
-                    egui::ComboBox::from_id_source("Item Link Zoom or Pan")
+                    egui::ComboBox::from_id_salt("Item Link Zoom or Pan")
                         .selected_text(format!("{:?}", mode))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(mode, ItemLinkNavigationMode::Zoom, "Zoom");
@@ -2627,25 +2584,15 @@ impl eframe::App for ProfApp {
                 });
 
                 ui.horizontal(|ui| {
-                    let mut current_theme = if cx.toggle_dark_mode {
-                        egui::Visuals::dark()
-                    } else {
-                        egui::Visuals::light()
-                    };
-
-                    current_theme.light_dark_radio_buttons(ui);
-                    if current_theme.dark_mode != cx.toggle_dark_mode {
-                        cx.toggle_dark_mode = current_theme.dark_mode;
-                        ctx.set_visuals(current_theme);
-                    }
-
-                    ui.toggle_value(&mut cx.debug, "🛠 Debug");
+                    egui::widgets::global_theme_preference_buttons(ui);
                 });
 
                 ui.horizontal(|ui| {
                     if ui.button("Show Controls").clicked() {
                         cx.show_controls = true;
                     }
+
+                    ui.toggle_value(&mut cx.debug, "🛠 Debug");
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
@@ -2721,7 +2668,7 @@ impl eframe::App for ProfApp {
 
                 let mut enabled = true;
                 egui::Window::new(short_title)
-                    .id(egui::Id::new(item.loc.item_uid.0))
+                    .id(egui::Id::new(("details_window", item.loc.item_uid.0)))
                     .open(&mut enabled)
                     .resizable(true)
                     .show(ctx, |ui| {
@@ -2769,13 +2716,19 @@ trait UiExtra {
     fn subheading(&mut self, text: impl Into<egui::RichText>, cx: &Context) -> egui::Response;
     fn show_tooltip(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
+        text: impl Into<egui::WidgetText>,
+    );
+    fn show_tooltip_at(
+        &mut self,
+        id_salt: impl core::hash::Hash,
+        suggested_position: Pos2,
         text: impl Into<egui::WidgetText>,
     );
     fn show_tooltip_ui(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         add_contents: impl FnOnce(&mut egui::Ui),
     );
@@ -2796,24 +2749,40 @@ impl UiExtra for egui::Ui {
     /// content (e.g., utilization plots).
     fn show_tooltip(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     ) {
-        self.show_tooltip_ui(id_source, rect, |ui| {
-            ui.add(egui::Label::new(text));
+        self.show_tooltip_ui(id_salt, rect, |ui| {
+            ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
         });
+    }
+    fn show_tooltip_at(
+        &mut self,
+        id_salt: impl core::hash::Hash,
+        suggested_position: Pos2,
+        text: impl Into<egui::WidgetText>,
+    ) {
+        egui::containers::show_tooltip_at(
+            self.ctx(),
+            self.layer_id(),
+            self.auto_id_with(id_salt),
+            suggested_position,
+            |ui| {
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
+            },
+        );
     }
     fn show_tooltip_ui(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         add_contents: impl FnOnce(&mut egui::Ui),
     ) {
         egui::containers::show_tooltip_for(
             self.ctx(),
             self.layer_id(),
-            self.auto_id_with(id_source),
+            self.auto_id_with(id_salt),
             rect,
             add_contents,
         );
@@ -2875,25 +2844,35 @@ pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
 
 #[cfg(target_arch = "wasm32")]
 pub fn start(data_sources: Vec<Box<dyn DeferredDataSource>>) {
+    use eframe::wasm_bindgen::JsCast as _;
+
     // Redirect `log` message to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
     let web_options = eframe::WebOptions::default();
 
     wasm_bindgen_futures::spawn_local(async {
+        let document = web_sys::window()
+            .expect("No window")
+            .document()
+            .expect("No document");
+
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("Failed to find the_canvas_id")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("the_canvas_id was not a HtmlCanvasElement");
+
         let start_result = eframe::WebRunner::new()
             .start(
-                "the_canvas_id",
+                canvas,
                 web_options,
                 Box::new(|cc| Ok(Box::new(ProfApp::new(cc, data_sources)))),
             )
             .await;
 
         // Remove the loading text and spinner:
-        let loading_text = web_sys::window()
-            .and_then(|w| w.document())
-            .and_then(|d| d.get_element_by_id("loading_text"));
-        if let Some(loading_text) = loading_text {
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
             match start_result {
                 Ok(_) => {
                     loading_text.remove();
