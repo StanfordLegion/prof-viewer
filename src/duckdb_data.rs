@@ -129,13 +129,26 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         )?;
 
         conn.execute(
-            "CREATE TABLE entry_info (
-                entry_slug TEXT PRIMARY KEY,
-                short_name TEXT,
-                long_name TEXT,
+            "CREATE TABLE entries (
+                entry_slug TEXT NOT NULL PRIMARY KEY,
+                short_name TEXT NOT NULL,
+                long_name TEXT NOT NULL,
                 parent_slug TEXT,
-                type TEXT,
+                type TEXT NOT NULL,
             )",
+            [],
+        )?;
+
+        conn.execute(
+            &format!(
+                "CREATE TABLE items (
+                    entry_slug TEXT NOT NULL,
+                    item_uid UBIGINT NOT NULL,
+                    interval {} NOT NULL,
+                    title TEXT NOT NULL,
+                )",
+                SqlType(FieldType::Interval),
+            ),
             [],
         )?;
 
@@ -151,7 +164,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         info: &EntryInfo,
         entry_rows: &[EntryRow],
     ) -> duckdb::Result<()> {
-        let mut app = conn.appender("entry_info")?;
+        let mut app = conn.appender("entries")?;
 
         for EntryRow {
             entry_id,
@@ -193,34 +206,15 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         Ok(())
     }
 
-    fn create_entry_table(&self, conn: &Connection, entry_id_slug: &str) -> duckdb::Result<()> {
-        conn.execute(
-            &format!(
-                "CREATE TABLE {} (
-                    item_uid UBIGINT,
-                    interval {},
-                    title TEXT,
-                )",
-                entry_id_slug,
-                SqlType(FieldType::Interval),
-            ),
-            [],
-        )?;
-
-        Ok(())
-    }
-
     fn add_entry_field(
         &self,
         conn: &Connection,
-        entry_id_slug: &str,
         field_name: &str,
         field_type: FieldType,
     ) -> duckdb::Result<()> {
         conn.execute(
             &format!(
-                "ALTER TABLE {} ADD COLUMN {} {}",
-                entry_id_slug,
+                "ALTER TABLE items ADD COLUMN {} {}",
                 field_name,
                 SqlType(field_type),
             ),
@@ -233,13 +227,12 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     fn upgrade_entry_field(
         &self,
         conn: &Connection,
-        entry_id_slug: &str,
         field_name: &str,
         old_type: FieldType,
         new_type: FieldType,
     ) -> duckdb::Result<()> {
         conn.execute(
-            &SqlType(old_type).upgrade_column(entry_id_slug, field_name, SqlType(new_type)),
+            &SqlType(old_type).upgrade_column("items", field_name, SqlType(new_type)),
             [],
         )?;
 
@@ -251,24 +244,15 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         conn: &Connection,
         field_schema: &FieldSchema,
         entry_id_slugs: &BTreeMap<EntryID, String>,
-        tables: &mut SlotMetaTable,
+        table: &mut SlotMetaTable,
         tile: SlotMetaTile,
     ) -> duckdb::Result<()> {
         let entry_id_slug = entry_id_slugs.get(&tile.entry_id).unwrap();
 
-        // Create the entry table (if it doesn't already exist)
-        let mut new_entry = false;
-        let (field_slots, slot_fields) =
-            tables
-                .fields
-                .entry(tile.entry_id.clone())
-                .or_insert_with(|| {
-                    new_entry = true;
-                    (BTreeMap::new(), Vec::new())
-                });
-        if new_entry {
-            self.create_entry_table(conn, entry_id_slug)?;
-        }
+        let SlotMetaTable {
+            field_slots,
+            slot_fields,
+        } = table;
 
         let field_names = field_schema.field_names();
 
@@ -303,18 +287,23 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         // Insert new fields discovered since last call
         for slot in last_slot..next_slot {
             let (field_name, field_type) = &slot_fields[slot];
-            self.add_entry_field(conn, entry_id_slug, field_name, *field_type)?;
+            self.add_entry_field(conn, field_name, *field_type)?;
         }
 
         // Upgrade fields that have changed type
         for (slot, old_type) in upgrade_slots_from_type {
             let (field_name, new_type) = &slot_fields[slot];
-            self.upgrade_entry_field(conn, entry_id_slug, field_name, old_type, *new_type)?;
+            self.upgrade_entry_field(conn, field_name, old_type, *new_type)?;
         }
 
-        let mut app = conn.appender(entry_id_slug)?;
-        self.schema
-            .append_slot_meta_tile(&mut app, &tile, field_slots, slot_fields)?;
+        let mut app = conn.appender("items")?;
+        self.schema.append_slot_meta_tile(
+            &mut app,
+            entry_id_slug,
+            &tile,
+            field_slots,
+            slot_fields,
+        )?;
 
         Ok(())
     }
@@ -324,11 +313,11 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         conn: &Connection,
         field_schema: &FieldSchema,
         entry_id_slugs: &BTreeMap<EntryID, String>,
-        tables: &mut SlotMetaTable,
+        table: &mut SlotMetaTable,
     ) -> duckdb::Result<()> {
         for (tile, _) in self.data_source.get_slot_meta_tiles() {
             let tile = tile.expect("reading slot meta tile failed");
-            self.write_slot_meta_tile(conn, field_schema, entry_id_slugs, tables, tile)?;
+            self.write_slot_meta_tile(conn, field_schema, entry_id_slugs, table, tile)?;
         }
         Ok(())
     }
@@ -368,7 +357,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
             .expect("Failed to insert entry info");
 
         let mut tm = TileManager::new(info.tile_set, info.interval);
-        let mut tables = SlotMetaTable::new();
+        let mut table = SlotMetaTable::new();
 
         for EntryRow { entry_id, .. } in &entry_rows {
             let entry_info = info.entry_info.get(entry_id).unwrap();
@@ -390,13 +379,13 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
             const MAX_IN_FLIGHT_REQUESTS: u64 = 100;
 
             while self.data_source.outstanding_requests() > MAX_IN_FLIGHT_REQUESTS {
-                self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut tables)
+                self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut table)
                     .expect("creating slot meta table failed");
             }
         }
 
         while self.data_source.outstanding_requests() > 0 {
-            self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut tables)
+            self.write_slot_meta_tiles(&conn, &info.field_schema, &entry_id_slugs, &mut table)
                 .expect("creating slot meta table failed");
         }
 
@@ -404,16 +393,16 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
     }
 }
 
-type SlotMetaFields = (BTreeMap<FieldID, usize>, Vec<(String, FieldType)>);
-
 struct SlotMetaTable {
-    fields: BTreeMap<EntryID, SlotMetaFields>,
+    field_slots: BTreeMap<FieldID, usize>,
+    slot_fields: Vec<(String, FieldType)>,
 }
 
 impl SlotMetaTable {
     fn new() -> Self {
         Self {
-            fields: BTreeMap::new(),
+            field_slots: BTreeMap::new(),
+            slot_fields: Vec::new(),
         }
     }
 }

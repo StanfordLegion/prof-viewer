@@ -114,6 +114,7 @@ impl ArrowSchema {
     pub fn append_slot_meta_tile(
         &self,
         app: &mut duckdb::Appender<'_>,
+        entry_id_slug: &str,
         tile: &SlotMetaTile,
         field_slots: &BTreeMap<FieldID, usize>,
         slot_fields: &[(String, FieldType)],
@@ -121,6 +122,7 @@ impl ArrowSchema {
         // The schema varies dynamically depending on what fields we get,
         // so don't bother trying to pre-generate this.
         let mut schema_fields = vec![
+            Field::new("entry_id_slug", DataType::Utf8, false),
             Field::new("item_uid", DataType::UInt64, false),
             Field::new("interval", self.interval_data_type.clone(), false),
             Field::new("title", DataType::Utf8, false),
@@ -130,6 +132,7 @@ impl ArrowSchema {
         }
         let slot_meta_tile_schema = Arc::new(Schema::new(schema_fields));
 
+        let mut entry_id_slug_builder = StringBuilder::new();
         let mut item_uid_builder = UInt64Builder::new();
         let mut interval_builder =
             StructBuilder::from_fields(self.interval_fields.clone(), Self::VECTOR_SIZE);
@@ -146,6 +149,7 @@ impl ArrowSchema {
         slot_duplicate.resize(slot_fields.len(), false);
         for row in &tile.data.items {
             for item in row {
+                entry_id_slug_builder.append_value(&entry_id_slug);
                 item_uid_builder.append_value(item.item_uid.0);
                 FieldType::append_interval(&mut interval_builder, item.original_interval).unwrap();
                 title_builder.append_value(&item.title);
@@ -173,6 +177,7 @@ impl ArrowSchema {
 
                 if item_uid_builder.len() >= Self::VECTOR_SIZE {
                     let mut arrays = Vec::<ArrayRef>::new();
+                    arrays.push(Arc::new(entry_id_slug_builder.finish()));
                     arrays.push(Arc::new(item_uid_builder.finish()));
                     arrays.push(Arc::new(interval_builder.finish()));
                     arrays.push(Arc::new(title_builder.finish()));
@@ -187,6 +192,7 @@ impl ArrowSchema {
         }
 
         let mut arrays = Vec::<ArrayRef>::new();
+        arrays.push(Arc::new(entry_id_slug_builder.finish()));
         arrays.push(Arc::new(item_uid_builder.finish()));
         arrays.push(Arc::new(interval_builder.finish()));
         arrays.push(Arc::new(title_builder.finish()));
