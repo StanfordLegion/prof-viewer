@@ -53,12 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          override: true
-          components: rustfmt
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: cargo fmt --all -- --check
 
   clippy:
@@ -66,12 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          override: true
-          components: clippy
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: cargo clippy --all-features --all-targets -- -D warnings
 
   trunk:
@@ -79,11 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          target: wasm32-unknown-unknown
-          override: true
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: wget -qO- https://github.com/trunk-rs/trunk/releases/download/v0.18.8/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
       - run: ./trunk build

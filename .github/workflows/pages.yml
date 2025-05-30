@@ -19,13 +19,10 @@ jobs:
     name: Build GitHub Pages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3 # repo checkout
-      - uses: actions-rs/toolchain@v1 # get rust toolchain for wasm
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@1.85.1
         with:
-          profile: minimal
-          toolchain: 1.85.1
           target: wasm32-unknown-unknown
-          override: true
       - name: Rust Cache # cache the rust build artefacts
         uses: Swatinem/rust-cache@v1
       - name: Download and install Trunk binary
