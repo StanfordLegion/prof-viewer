@@ -785,13 +785,14 @@ impl Slot {
                     Ok(t) => t,
                     Err(e) => {
                         warn!("{}", e);
-                        ui.show_tooltip("task_tooltip", &item_rect, e);
+                        ui.show_tooltip("task_tooltip_error", &item_rect, e);
                         return hover_pos;
                     }
                 };
 
                 let item_meta = &tile_meta.items[row][item_idx];
-                ui.show_tooltip_ui("task_tooltip", &item_rect, |ui| {
+                let tooltip_id = ("task_tooltip", item_meta.item_uid.0);
+                ui.show_tooltip_ui(tooltip_id, &item_rect, |ui| {
                     ui.label(&item_meta.title);
                     if cx.debug {
                         ui.label(format!("Item UID: {}", item_meta.item_uid.0));
