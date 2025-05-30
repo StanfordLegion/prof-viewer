@@ -301,6 +301,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         self.schema.append_slot_meta_tile(
             &mut app,
             entry_id_slug,
+            entry_id_slugs,
             &tile,
             field_slots,
             slot_fields,

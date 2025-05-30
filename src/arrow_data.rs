@@ -12,7 +12,8 @@ use duckdb::arrow::{
 };
 
 use crate::data::{
-    self, DataSourceDescription, DataSourceInfo, FieldID, ItemField, ItemLink, SlotMetaTile,
+    self, DataSourceDescription, DataSourceInfo, EntryID, FieldID, ItemField, ItemLink,
+    SlotMetaTile,
 };
 use crate::timestamp::Interval;
 
@@ -115,6 +116,7 @@ impl ArrowSchema {
         &self,
         app: &mut duckdb::Appender<'_>,
         entry_id_slug: &str,
+        entry_id_slugs: &BTreeMap<EntryID, String>,
         tile: &SlotMetaTile,
         field_slots: &BTreeMap<FieldID, usize>,
         slot_fields: &[(String, FieldType)],
@@ -164,7 +166,9 @@ impl ArrowSchema {
                     }
                     let (_, field_type) = &slot_fields[slot];
                     let builder = &mut slot_builders[slot];
-                    field_type.append_value(builder, field).unwrap();
+                    field_type
+                        .append_value(builder, field, entry_id_slugs)
+                        .unwrap();
                     slot_present[slot] = true;
                 }
                 for (slot, present) in slot_present.iter().enumerate() {
@@ -343,6 +347,7 @@ impl FieldType {
         &self,
         builder: &mut Box<dyn ArrayBuilder>,
         value: &data::Field,
+        entry_id_slugs: &BTreeMap<EntryID, String>,
     ) -> Result<(), ArrowError> {
         match (self, value) {
             (FieldType::I64, data::Field::I64(x)) => {
@@ -375,12 +380,12 @@ impl FieldType {
             }
             (FieldType::ItemLink, data::Field::ItemLink(x)) => {
                 let builder = Self::cast::<StructBuilder>(builder)?;
-                Self::append_item_link(builder, x)?;
+                Self::append_item_link(builder, x, entry_id_slugs)?;
             }
             (FieldType::Vec(v), data::Field::Vec(xs)) => {
                 let builder = Self::cast::<ListBuilder<Box<dyn ArrayBuilder>>>(builder)?;
                 for x in xs {
-                    v.append_value(builder.values(), x)?;
+                    v.append_value(builder.values(), x, entry_id_slugs)?;
                 }
                 builder.append(true);
             }
@@ -463,6 +468,7 @@ impl FieldType {
     pub fn append_item_link(
         builder: &mut StructBuilder,
         link: &ItemLink,
+        entry_id_slugs: &BTreeMap<EntryID, String>,
     ) -> Result<(), ArrowError> {
         Self::cast_field::<UInt64Builder>(builder, 0, "item_uid", "ItemLink")?
             .append_value(link.item_uid.0);
@@ -474,7 +480,8 @@ impl FieldType {
             Self::cast_field::<StructBuilder>(builder, 2, "interval", "Interval")?;
         Self::append_interval(item_link_interval_builder, link.interval)?;
 
-        Self::cast_field::<StringBuilder>(builder, 3, "entry_slug", "ItemLink")?.append_null(); // TODO
+        Self::cast_field::<StringBuilder>(builder, 3, "entry_slug", "ItemLink")?
+            .append_value(entry_id_slugs.get(&link.entry_id).unwrap());
 
         builder.append(true);
 
