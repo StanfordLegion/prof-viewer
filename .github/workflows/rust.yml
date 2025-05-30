@@ -12,6 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.85.1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --no-default-features --lib
       - run: cargo check --no-default-features --features client --all-targets
       - run: cargo check --no-default-features --features server --lib
@@ -23,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.85.1
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --no-default-features --lib
       - run: cargo check --no-default-features --features client --all-targets
       - run: cargo check --no-default-features --features server --lib
@@ -36,6 +38,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85.1
         with:
           target: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --no-default-features --lib --target wasm32-unknown-unknown
       - run: cargo check --no-default-features --features client --lib --target wasm32-unknown-unknown
 
@@ -45,6 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.85.1
+      - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
       - run: cargo test --lib --all-features
 
@@ -56,6 +60,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85.1
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
 
   clippy:
@@ -66,6 +71,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85.1
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-features --all-targets -- -D warnings
 
   trunk:
@@ -76,5 +82,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.85.1
         with:
           target: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
       - run: wget -qO- https://github.com/trunk-rs/trunk/releases/download/v0.18.8/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
       - run: ./trunk build
