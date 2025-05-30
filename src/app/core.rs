@@ -1780,7 +1780,7 @@ impl Window {
             ui.label("Search field:");
             let schema = &self.config.field_schema;
             let search_field = &mut self.config.search_state.search_field;
-            egui::ComboBox::from_id_source("Search field")
+            egui::ComboBox::from_id_salt("Search field")
                 .selected_text(schema.get_name(*search_field).unwrap())
                 .show_ui(ui, |ui| {
                     for field in schema.searchable() {
@@ -2209,8 +2209,6 @@ impl ProfApp {
                 .line_segment([mid_bottom, bottom], visuals.fg_stroke);
 
             // Show timestamp popup
-
-            const HOVER_PADDING: f32 = 8.0;
             let time = (hover.x - rect.left()) / rect.width();
             let time = cx.view_interval.lerp(time);
 
@@ -2226,40 +2224,7 @@ impl ProfApp {
                 format!("t={time_units}")
             };
 
-            let label_size = {
-                let label_margin = ui.spacing().window_margin;
-                let available_width = ui.available_width() - 2.0 * label_margin.sum().x;
-                let label_text: egui::WidgetText = (&label_text).into();
-                let label_text =
-                    label_text.into_galley(ui, None, available_width, egui::TextStyle::Body);
-                label_text.size() + 2.0 * label_margin.sum()
-            };
-
-            // Hack: This avoids an issue where popups displayed normally are
-            // forced to stack, even when an explicit position is
-            // requested. Instead we display the popup manually via black magic
-            let popup_size = label_size.x;
-            let mut popup_rect = Rect::from_min_size(
-                Pos2::new(top.x + HOVER_PADDING, top.y),
-                Vec2::new(popup_size, 100.0),
-            );
-            // This is a hack to keep the time viewer on the screen when we
-            // approach the right edge.
-            if popup_rect.right() > ui.min_rect().right() {
-                popup_rect = popup_rect
-                    .translate(Vec2::new(ui.min_rect().right() - popup_rect.right(), 0.0));
-            }
-            let mut popup_ui = egui::Ui::new(
-                ui.ctx().clone(),
-                ui.layer_id(),
-                ui.id(),
-                popup_rect,
-                popup_rect.expand(16.0),
-                ui.stack().info.clone(),
-            );
-            egui::Frame::popup(ui.style()).show(&mut popup_ui, |ui| {
-                ui.label(label_text);
-            });
+            ui.show_tooltip_at("timestamp_tooltip", top, label_text);
         }
     }
 
@@ -2303,7 +2268,7 @@ impl ProfApp {
                 show_row("Reset Vertical Spacing", "Ctrl + Alt + 0");
                 show_row("Toggle This Window", "H");
                 show_row_ui(&mut body, "Item Link Zoom or Pan", |ui: &mut _| {
-                    egui::ComboBox::from_id_source("Item Link Zoom or Pan")
+                    egui::ComboBox::from_id_salt("Item Link Zoom or Pan")
                         .selected_text(format!("{:?}", mode))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(mode, ItemLinkNavigationMode::Zoom, "Zoom");
@@ -2627,17 +2592,18 @@ impl eframe::App for ProfApp {
                 });
 
                 ui.horizontal(|ui| {
-                    let mut current_theme = if cx.toggle_dark_mode {
-                        egui::Visuals::dark()
-                    } else {
-                        egui::Visuals::light()
-                    };
+                    egui::widgets::global_theme_preference_buttons(ui);
+                    // let mut current_theme = if cx.toggle_dark_mode {
+                    //     egui::Visuals::dark()
+                    // } else {
+                    //     egui::Visuals::light()
+                    // };
 
-                    current_theme.light_dark_radio_buttons(ui);
-                    if current_theme.dark_mode != cx.toggle_dark_mode {
-                        cx.toggle_dark_mode = current_theme.dark_mode;
-                        ctx.set_visuals(current_theme);
-                    }
+                    // current_theme.light_dark_radio_buttons(ui);
+                    // if current_theme.dark_mode != cx.toggle_dark_mode {
+                    //     cx.toggle_dark_mode = current_theme.dark_mode;
+                    //     ctx.set_visuals(current_theme);
+                    // }
 
                     ui.toggle_value(&mut cx.debug, "🛠 Debug");
                 });
@@ -2769,13 +2735,19 @@ trait UiExtra {
     fn subheading(&mut self, text: impl Into<egui::RichText>, cx: &Context) -> egui::Response;
     fn show_tooltip(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
+        text: impl Into<egui::WidgetText>,
+    );
+    fn show_tooltip_at(
+        &mut self,
+        id_salt: impl core::hash::Hash,
+        suggested_position: Pos2,
         text: impl Into<egui::WidgetText>,
     );
     fn show_tooltip_ui(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         add_contents: impl FnOnce(&mut egui::Ui),
     );
@@ -2796,24 +2768,40 @@ impl UiExtra for egui::Ui {
     /// content (e.g., utilization plots).
     fn show_tooltip(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         text: impl Into<egui::WidgetText>,
     ) {
-        self.show_tooltip_ui(id_source, rect, |ui| {
-            ui.add(egui::Label::new(text));
+        self.show_tooltip_ui(id_salt, rect, |ui| {
+            ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
         });
+    }
+    fn show_tooltip_at(
+        &mut self,
+        id_salt: impl core::hash::Hash,
+        suggested_position: Pos2,
+        text: impl Into<egui::WidgetText>,
+    ) {
+        egui::containers::show_tooltip_at(
+            self.ctx(),
+            self.layer_id(),
+            self.auto_id_with(id_salt),
+            suggested_position,
+            |ui| {
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
+            },
+        );
     }
     fn show_tooltip_ui(
         &mut self,
-        id_source: impl core::hash::Hash,
+        id_salt: impl core::hash::Hash,
         rect: &Rect,
         add_contents: impl FnOnce(&mut egui::Ui),
     ) {
         egui::containers::show_tooltip_for(
             self.ctx(),
             self.layer_id(),
-            self.auto_id_with(id_source),
+            self.auto_id_with(id_salt),
             rect,
             add_contents,
         );
