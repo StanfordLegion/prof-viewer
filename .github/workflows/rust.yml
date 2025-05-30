@@ -11,11 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          override: true
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: cargo check --no-default-features --lib
       - run: cargo check --no-default-features --features client --all-targets
       - run: cargo check --no-default-features --features server --lib
@@ -26,11 +22,7 @@ jobs:
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          override: true
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: cargo check --no-default-features --lib
       - run: cargo check --no-default-features --features client --all-targets
       - run: cargo check --no-default-features --features server --lib
@@ -41,12 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@1.85.1
         with:
-          profile: minimal
-          toolchain: 1.85.1
           target: wasm32-unknown-unknown
-          override: true
       - run: cargo check --no-default-features --lib --target wasm32-unknown-unknown
       - run: cargo check --no-default-features --features client --lib --target wasm32-unknown-unknown
 
@@ -55,11 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.85.1
-          override: true
+      - uses: dtolnay/rust-toolchain@1.85.1
       - run: sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
       - run: cargo test --lib --all-features
 
