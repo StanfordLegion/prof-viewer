@@ -123,7 +123,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     interval {},
                     warning_message TEXT,
                 )",
-                SqlType(FieldType::Interval),
+                SqlType(&FieldType::Interval),
             ),
             [],
         )?;
@@ -147,7 +147,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     interval {} NOT NULL,
                     title TEXT NOT NULL,
                 )",
-                SqlType(FieldType::Interval),
+                SqlType(&FieldType::Interval),
             ),
             [],
         )?;
@@ -210,7 +210,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         &self,
         conn: &Connection,
         field_name: &str,
-        field_type: FieldType,
+        field_type: &FieldType,
     ) -> duckdb::Result<()> {
         conn.execute(
             &format!(
@@ -228,11 +228,11 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         &self,
         conn: &Connection,
         field_name: &str,
-        old_type: FieldType,
-        new_type: FieldType,
+        old_type: &FieldType,
+        new_type: &FieldType,
     ) -> duckdb::Result<()> {
         conn.execute(
-            &SqlType(old_type).upgrade_column("items", field_name, SqlType(new_type)),
+            &SqlType(old_type).upgrade_column("items", field_name, &SqlType(new_type)),
             [],
         )?;
 
@@ -270,13 +270,15 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                     });
                     let field_type = FieldType::infer_type(field);
                     if slot == slot_fields.len() {
-                        let field_name = sanitize(field_names.get(&field_id).unwrap());
+                        let field_name = sanitize(field_names.get(field_id).unwrap());
                         slot_fields.push((field_name, field_type));
                     } else {
-                        let old_type = slot_fields[slot].1;
-                        let meet_type = old_type.meet(field_type);
-                        if old_type != meet_type {
-                            upgrade_slots_from_type.entry(slot).or_insert(old_type);
+                        let old_type = &slot_fields[slot].1;
+                        let meet_type = old_type.meet(&field_type);
+                        if old_type != &meet_type {
+                            upgrade_slots_from_type
+                                .entry(slot)
+                                .or_insert_with(|| old_type.clone());
                             slot_fields[slot].1 = meet_type;
                         }
                     }
@@ -285,15 +287,14 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         }
 
         // Insert new fields discovered since last call
-        for slot in last_slot..next_slot {
-            let (field_name, field_type) = &slot_fields[slot];
-            self.add_entry_field(conn, field_name, *field_type)?;
+        for (field_name, field_type) in &slot_fields[last_slot..next_slot] {
+            self.add_entry_field(conn, field_name, field_type)?;
         }
 
         // Upgrade fields that have changed type
         for (slot, old_type) in upgrade_slots_from_type {
             let (field_name, new_type) = &slot_fields[slot];
-            self.upgrade_entry_field(conn, field_name, old_type, *new_type)?;
+            self.upgrade_entry_field(conn, field_name, &old_type, new_type)?;
         }
 
         let mut app = conn.appender("items")?;
@@ -407,10 +408,10 @@ impl SlotMetaTable {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-struct SqlType(FieldType);
+#[derive(Debug, Clone)]
+struct SqlType<'a>(&'a FieldType);
 
-impl fmt::Display for SqlType {
+impl fmt::Display for SqlType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
             FieldType::I64 => write!(f, "BIGINT"),
@@ -420,16 +421,17 @@ impl fmt::Display for SqlType {
             FieldType::ItemLink => write!(
                 f,
                 "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
-                SqlType(FieldType::Interval)
+                SqlType(&FieldType::Interval)
             ),
-            FieldType::Vec => write!(f, "TEXT"),
+            FieldType::Vec(v) => write!(f, "{}[]", SqlType(v)),
             FieldType::Empty => write!(f, "BOOLEAN"),
+            FieldType::Unknown => panic!("cannot write unknown type"),
         }
     }
 }
 
-impl SqlType {
-    fn upgrade_column(&self, table_name: &str, column_name: &str, to_type: SqlType) -> String {
+impl SqlType<'_> {
+    fn upgrade_column(&self, table_name: &str, column_name: &str, to_type: &SqlType<'_>) -> String {
         match (self, to_type) {
             (SqlType(FieldType::U64), SqlType(FieldType::ItemLink))
             | (SqlType(FieldType::String), SqlType(FieldType::ItemLink)) => format!(

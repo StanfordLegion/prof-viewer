@@ -149,7 +149,7 @@ impl ArrowSchema {
         slot_duplicate.resize(slot_fields.len(), false);
         for row in &tile.data.items {
             for item in row {
-                entry_id_slug_builder.append_value(&entry_id_slug);
+                entry_id_slug_builder.append_value(entry_id_slug);
                 item_uid_builder.append_value(item.item_uid.0);
                 FieldType::append_interval(&mut interval_builder, item.original_interval).unwrap();
                 title_builder.append_value(&item.title);
@@ -176,11 +176,12 @@ impl ArrowSchema {
                 }
 
                 if item_uid_builder.len() >= Self::VECTOR_SIZE {
-                    let mut arrays = Vec::<ArrayRef>::new();
-                    arrays.push(Arc::new(entry_id_slug_builder.finish()));
-                    arrays.push(Arc::new(item_uid_builder.finish()));
-                    arrays.push(Arc::new(interval_builder.finish()));
-                    arrays.push(Arc::new(title_builder.finish()));
+                    let mut arrays: Vec<ArrayRef> = vec![
+                        Arc::new(entry_id_slug_builder.finish()),
+                        Arc::new(item_uid_builder.finish()),
+                        Arc::new(interval_builder.finish()),
+                        Arc::new(title_builder.finish()),
+                    ];
                     for builder in &mut slot_builders {
                         arrays.push(Arc::new(builder.finish()));
                     }
@@ -191,11 +192,12 @@ impl ArrowSchema {
             }
         }
 
-        let mut arrays = Vec::<ArrayRef>::new();
-        arrays.push(Arc::new(entry_id_slug_builder.finish()));
-        arrays.push(Arc::new(item_uid_builder.finish()));
-        arrays.push(Arc::new(interval_builder.finish()));
-        arrays.push(Arc::new(title_builder.finish()));
+        let mut arrays: Vec<ArrayRef> = vec![
+            Arc::new(entry_id_slug_builder.finish()),
+            Arc::new(item_uid_builder.finish()),
+            Arc::new(interval_builder.finish()),
+            Arc::new(title_builder.finish()),
+        ];
         for builder in &mut slot_builders {
             arrays.push(Arc::new(builder.finish()));
         }
@@ -227,15 +229,16 @@ impl Default for ArrowSchema {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FieldType {
     I64,
     U64,
     String,
     Interval,
     ItemLink,
-    Vec,
+    Vec(Box<FieldType>),
     Empty,
+    Unknown,
 }
 
 impl FieldType {
@@ -246,12 +249,17 @@ impl FieldType {
             data::Field::String(..) => FieldType::String,
             data::Field::Interval(..) => FieldType::Interval,
             data::Field::ItemLink(..) => FieldType::ItemLink,
-            data::Field::Vec(..) => FieldType::Vec,
+            data::Field::Vec(v) => FieldType::Vec(Box::new(
+                v.iter()
+                    .map(Self::infer_type)
+                    .reduce(|x, y| x.meet(&y))
+                    .unwrap_or(FieldType::Unknown),
+            )),
             data::Field::Empty => FieldType::Empty,
         }
     }
 
-    pub fn meet(self, b: FieldType) -> FieldType {
+    pub fn meet(&self, b: &FieldType) -> FieldType {
         match (self, b) {
             // Anything can meet with itself
             (FieldType::I64, FieldType::I64) => FieldType::I64,
@@ -259,10 +267,14 @@ impl FieldType {
             (FieldType::String, FieldType::String) => FieldType::String,
             (FieldType::Interval, FieldType::Interval) => FieldType::Interval,
             (FieldType::ItemLink, FieldType::ItemLink) => FieldType::ItemLink,
-            (FieldType::Vec, FieldType::Vec) => FieldType::Vec,
+            (FieldType::Vec(va), FieldType::Vec(vb)) => FieldType::Vec(Box::new(va.meet(vb))),
             (FieldType::Empty, FieldType::Empty) => FieldType::Empty,
+            (FieldType::Unknown, x) => x.clone(),
+            (x, FieldType::Unknown) => x.clone(),
 
             // Allow certain types to upgrade that we know are used together
+
+            // Strings, integers upgrade to ItemLink
             (FieldType::U64, FieldType::String) => FieldType::String,
             (FieldType::String, FieldType::U64) => FieldType::String,
             (FieldType::U64, FieldType::ItemLink) => FieldType::ItemLink,
@@ -274,19 +286,22 @@ impl FieldType {
         }
     }
 
-    pub fn data_type(self, schema: &ArrowSchema) -> DataType {
+    pub fn data_type(&self, schema: &ArrowSchema) -> DataType {
         match self {
             FieldType::I64 => DataType::Int64,
             FieldType::U64 => DataType::UInt64,
             FieldType::String => DataType::Utf8,
             FieldType::Interval => schema.interval_data_type.clone(),
             FieldType::ItemLink => schema.item_link_data_type.clone(),
-            FieldType::Vec => DataType::Utf8,
+            FieldType::Vec(v) => {
+                DataType::List(Arc::new(Field::new_list_field(v.data_type(schema), true)))
+            }
             FieldType::Empty => DataType::Boolean,
+            FieldType::Unknown => panic!("cannot write unknown type"),
         }
     }
 
-    pub fn make_builder(self, schema: &ArrowSchema) -> Box<dyn ArrayBuilder> {
+    pub fn make_builder(&self, schema: &ArrowSchema) -> Box<dyn ArrayBuilder> {
         match self {
             FieldType::I64 => Box::new(Int64Builder::new()),
             FieldType::U64 => Box::new(UInt64Builder::new()),
@@ -299,8 +314,11 @@ impl FieldType {
                 schema.item_link_fields.clone(),
                 ArrowSchema::VECTOR_SIZE,
             )),
-            FieldType::Vec => Box::new(StringBuilder::new()),
+            FieldType::Vec(v) => Box::new(ListBuilder::<Box<dyn ArrayBuilder>>::new(Box::new(
+                v.make_builder(schema),
+            ))),
             FieldType::Empty => Box::new(BooleanBuilder::new()),
+            FieldType::Unknown => panic!("cannot write unknown type"),
         }
     }
 
@@ -322,7 +340,7 @@ impl FieldType {
     }
 
     pub fn append_value(
-        self,
+        &self,
         builder: &mut Box<dyn ArrayBuilder>,
         value: &data::Field,
     ) -> Result<(), ArrowError> {
@@ -359,20 +377,24 @@ impl FieldType {
                 let builder = Self::cast::<StructBuilder>(builder)?;
                 Self::append_item_link(builder, x)?;
             }
-            (FieldType::Vec, data::Field::Vec(x)) => {
-                let builder = Self::cast::<StringBuilder>(builder)?;
-                builder.append_value(format!("{:?}", x));
+            (FieldType::Vec(v), data::Field::Vec(xs)) => {
+                let builder = Self::cast::<ListBuilder<Box<dyn ArrayBuilder>>>(builder)?;
+                for x in xs {
+                    v.append_value(builder.values(), x)?;
+                }
+                builder.append(true);
             }
             (FieldType::Empty, data::Field::Empty) => {
                 let builder = Self::cast::<BooleanBuilder>(builder)?;
                 builder.append_value(true);
             }
+            (FieldType::Unknown, _) => panic!("cannot write unknown type"),
             _ => panic!("Unknown combination of type/value: {self:?} and {value:?}"),
         }
         Ok(())
     }
 
-    pub fn append_null(self, builder: &mut Box<dyn ArrayBuilder>) -> Result<(), ArrowError> {
+    pub fn append_null(&self, builder: &mut Box<dyn ArrayBuilder>) -> Result<(), ArrowError> {
         match self {
             FieldType::I64 => {
                 let builder = Self::cast::<Int64Builder>(builder)?;
@@ -394,14 +416,15 @@ impl FieldType {
                 let builder = Self::cast::<StructBuilder>(builder)?;
                 Self::append_item_link_null(builder)?;
             }
-            FieldType::Vec => {
-                let builder = Self::cast::<StringBuilder>(builder)?;
+            FieldType::Vec(_) => {
+                let builder = Self::cast::<ListBuilder<Box<dyn ArrayBuilder>>>(builder)?;
                 builder.append_null();
             }
             FieldType::Empty => {
                 let builder = Self::cast::<BooleanBuilder>(builder)?;
                 builder.append_null();
             }
+            FieldType::Unknown => panic!("cannot write unknown type"),
         }
         Ok(())
     }
