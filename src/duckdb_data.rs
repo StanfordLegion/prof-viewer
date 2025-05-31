@@ -140,15 +140,11 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         )?;
 
         conn.execute(
-            &format!(
-                "CREATE TABLE items (
-                    entry_slug TEXT NOT NULL,
-                    item_uid UBIGINT NOT NULL,
-                    interval {} NOT NULL,
-                    title TEXT NOT NULL,
-                )",
-                SqlType(&FieldType::Interval),
-            ),
+            "CREATE TABLE items (
+                entry_slug TEXT NOT NULL,
+                item_uid UBIGINT NOT NULL,
+                title TEXT NOT NULL,
+            )",
             [],
         )?;
 

@@ -126,7 +126,6 @@ impl ArrowSchema {
         let mut schema_fields = vec![
             Field::new("entry_id_slug", DataType::Utf8, false),
             Field::new("item_uid", DataType::UInt64, false),
-            Field::new("interval", self.interval_data_type.clone(), false),
             Field::new("title", DataType::Utf8, false),
         ];
         for (field_name, field_type) in slot_fields {
@@ -136,8 +135,6 @@ impl ArrowSchema {
 
         let mut entry_id_slug_builder = StringBuilder::new();
         let mut item_uid_builder = UInt64Builder::new();
-        let mut interval_builder =
-            StructBuilder::from_fields(self.interval_fields.clone(), Self::VECTOR_SIZE);
         let mut title_builder = StringBuilder::new();
 
         let mut slot_builders: Vec<_> = slot_fields
@@ -153,7 +150,6 @@ impl ArrowSchema {
             for item in row {
                 entry_id_slug_builder.append_value(entry_id_slug);
                 item_uid_builder.append_value(item.item_uid.0);
-                FieldType::append_interval(&mut interval_builder, item.original_interval).unwrap();
                 title_builder.append_value(&item.title);
 
                 slot_present.clear();
@@ -183,7 +179,6 @@ impl ArrowSchema {
                     let mut arrays: Vec<ArrayRef> = vec![
                         Arc::new(entry_id_slug_builder.finish()),
                         Arc::new(item_uid_builder.finish()),
-                        Arc::new(interval_builder.finish()),
                         Arc::new(title_builder.finish()),
                     ];
                     for builder in &mut slot_builders {
@@ -199,7 +194,6 @@ impl ArrowSchema {
         let mut arrays: Vec<ArrayRef> = vec![
             Arc::new(entry_id_slug_builder.finish()),
             Arc::new(item_uid_builder.finish()),
-            Arc::new(interval_builder.finish()),
             Arc::new(title_builder.finish()),
         ];
         for builder in &mut slot_builders {
