@@ -272,9 +272,14 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
                         let old_type = &slot_fields[slot].1;
                         let meet_type = old_type.meet(&field_type);
                         if old_type != &meet_type {
-                            upgrade_slots_from_type
-                                .entry(slot)
-                                .or_insert_with(|| old_type.clone());
+                            // If this is a slot we had generated for a previous
+                            // tile, it already has a column in the database and
+                            // we need to upgrade it.
+                            if slot < last_slot {
+                                upgrade_slots_from_type
+                                    .entry(slot)
+                                    .or_insert_with(|| old_type.clone());
+                            }
                             slot_fields[slot].1 = meet_type;
                         }
                     }
