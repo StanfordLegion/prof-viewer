@@ -461,6 +461,7 @@ impl SqlType<'_> {
                 // Hack: DuckDB does not appear to correctly bind the parameter
                 // x, so we replace it here with a dummy. We know the Vec is
                 // empty anyway, so it shouldn't matter.
+                // https://github.com/duckdb/duckdb/issues/17803
                 (FieldType::Unknown, FieldType::ItemLink) => format!(
                     "ALTER TABLE {table_name}
                      ALTER COLUMN {column_name} TYPE {to_type}
