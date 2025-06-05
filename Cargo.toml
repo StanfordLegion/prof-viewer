@@ -1,6 +1,6 @@
 [package]
 name = "legion_prof_viewer"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Elliott Slaughter <slaughter@cs.stanford.edu>"]
 description = "Profiler UI frontend component for Legion Prof"
 documentation = "https://github.com/StanfordLegion/prof-viewer"
