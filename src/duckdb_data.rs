@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 use duckdb::{Connection, params};
 use itertools::Itertools;
+use log::info;
 use regex::Regex;
 
 use crate::app::tile_manager::TileManager;
@@ -208,6 +209,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         field_name: &str,
         field_type: &FieldType,
     ) -> duckdb::Result<()> {
+        info!("add_entry_field {field_name} {field_type:?}");
         conn.execute(
             &format!(
                 "ALTER TABLE items ADD COLUMN {} {}",
@@ -227,6 +229,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         old_type: &FieldType,
         new_type: &FieldType,
     ) -> duckdb::Result<()> {
+        info!("upgrade_entry_field {field_name} {old_type:?} {new_type:?}");
         conn.execute(
             &SqlType(old_type).upgrade_column("items", field_name, &SqlType(new_type)),
             [],
@@ -425,7 +428,15 @@ impl fmt::Display for SqlType<'_> {
                 "STRUCT(item_uid UBIGINT, title TEXT, interval {}, entry_slug TEXT)",
                 SqlType(&FieldType::Interval)
             ),
-            FieldType::Vec(v) => write!(f, "{}[]", SqlType(v)),
+            FieldType::Vec(v) => {
+                match &**v {
+                    // Sometimes we end up with an empty Vec, which comes out
+                    // here as Unknown. We have to pick a type, but the list is
+                    // empty so the element doesn't matter.
+                    FieldType::Unknown => write!(f, "VARCHAR[]"),
+                    _ => write!(f, "{}[]", SqlType(v)),
+                }
+            }
             FieldType::Empty => write!(f, "BOOLEAN"),
             FieldType::Unknown => panic!("cannot write unknown type"),
         }
@@ -434,10 +445,10 @@ impl fmt::Display for SqlType<'_> {
 
 impl SqlType<'_> {
     fn upgrade_column(&self, table_name: &str, column_name: &str, to_type: &SqlType<'_>) -> String {
-        match (self, to_type) {
-            (SqlType(FieldType::U64), SqlType(FieldType::ItemLink))
-            | (SqlType(FieldType::String), SqlType(FieldType::ItemLink)) => format!(
-                "ALTER TABLE {table_name}
+        match (&self.0, &to_type.0) {
+            (FieldType::U64, FieldType::ItemLink) | (FieldType::String, FieldType::ItemLink) => {
+                format!(
+                    "ALTER TABLE {table_name}
                      ALTER COLUMN {column_name} TYPE {to_type}
                      USING {{
                          'item_uid': NULL,
@@ -445,7 +456,32 @@ impl SqlType<'_> {
                          'interval': {{'start': NULL, 'stop': NULL, 'duration': NULL}},
                          'entry_slug': NULL,
                      }};"
-            ),
+                )
+            }
+            (FieldType::Vec(from_elt), FieldType::Vec(to_elt)) => match (&**from_elt, &**to_elt) {
+                // Hack: DuckDB does not appear to correctly bind the parameter
+                // x, so we replace it here with a dummy. We know the Vec is
+                // empty anyway, so it shouldn't matter.
+                // https://github.com/duckdb/duckdb/issues/17803
+                (FieldType::Unknown, FieldType::ItemLink) => format!(
+                    "ALTER TABLE {table_name}
+                     ALTER COLUMN {column_name} TYPE {to_type}
+                     USING (
+                         list_transform(
+                             {column_name},
+                             lambda x: {{
+                                 'item_uid': NULL,
+                                 'title': 'dummy',
+                                 'interval': {{'start': NULL, 'stop': NULL, 'duration': NULL}},
+                                 'entry_slug': NULL,
+                             }}
+                         )
+                     );"
+                ),
+                _ => panic!(
+                    "don't know how to perform upgrade from Vec({self:?}) to Vec({to_type:?})"
+                ),
+            },
             _ => panic!("don't know how to perform upgrade from {self:?} to {to_type:?}"),
         }
     }
