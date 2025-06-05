@@ -458,9 +458,10 @@ impl SqlType<'_> {
                 )
             }
             (FieldType::Vec(from_elt), FieldType::Vec(to_elt)) => match (&**from_elt, &**to_elt) {
-                (FieldType::U64, FieldType::ItemLink)
-                | (FieldType::String, FieldType::ItemLink)
-                | (FieldType::Unknown, FieldType::ItemLink) => format!(
+                // Hack: DuckDB does not appear to correctly bind the parameter
+                // x, so we replace it here with a dummy. We know the Vec is
+                // empty anyway, so it shouldn't matter.
+                (FieldType::Unknown, FieldType::ItemLink) => format!(
                     "ALTER TABLE {table_name}
                      ALTER COLUMN {column_name} TYPE {to_type}
                      USING (
@@ -468,7 +469,7 @@ impl SqlType<'_> {
                              {column_name},
                              lambda x: {{
                                  'item_uid': NULL,
-                                 'title': x,
+                                 'title': 'dummy',
                                  'interval': {{'start': NULL, 'stop': NULL, 'duration': NULL}},
                                  'entry_slug': NULL,
                              }}
