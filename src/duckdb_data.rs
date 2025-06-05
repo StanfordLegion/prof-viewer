@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 use duckdb::{Connection, params};
 use itertools::Itertools;
+use log::info;
 use regex::Regex;
 
 use crate::app::tile_manager::TileManager;
@@ -208,7 +209,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         field_name: &str,
         field_type: &FieldType,
     ) -> duckdb::Result<()> {
-        println!("add_entry_field {field_name} {field_type:?}");
+        info!("add_entry_field {field_name} {field_type:?}");
         conn.execute(
             &format!(
                 "ALTER TABLE items ADD COLUMN {} {}",
@@ -228,7 +229,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         old_type: &FieldType,
         new_type: &FieldType,
     ) -> duckdb::Result<()> {
-        println!("upgrade_entry_field {field_name} {old_type:?} {new_type:?}");
+        info!("upgrade_entry_field {field_name} {old_type:?} {new_type:?}");
         conn.execute(
             &SqlType(old_type).upgrade_column("items", field_name, &SqlType(new_type)),
             [],
