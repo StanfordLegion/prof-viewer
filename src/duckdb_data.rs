@@ -475,7 +475,9 @@ impl SqlType<'_> {
                          )
                      );"
                 ),
-                _ => panic!("don't know how to perform upgrade from {self:?} to {to_type:?}"),
+                _ => panic!(
+                    "don't know how to perform upgrade from Vec({self:?}) to Vec({to_type:?})"
+                ),
             },
             _ => panic!("don't know how to perform upgrade from {self:?} to {to_type:?}"),
         }

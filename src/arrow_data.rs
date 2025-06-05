@@ -292,7 +292,11 @@ impl FieldType {
             FieldType::Interval => schema.interval_data_type.clone(),
             FieldType::ItemLink => schema.item_link_data_type.clone(),
             FieldType::Vec(v) => {
-                DataType::List(Arc::new(Field::new_list_field(v.data_type(schema), true)))
+                let field = match &**v {
+                    FieldType::Unknown => DataType::Utf8,
+                    v => v.data_type(schema),
+                };
+                DataType::List(Arc::new(Field::new_list_field(field, true)))
             }
             FieldType::Empty => DataType::Boolean,
             FieldType::Unknown => panic!("cannot write unknown type"),
@@ -312,9 +316,13 @@ impl FieldType {
                 schema.item_link_fields.clone(),
                 ArrowSchema::VECTOR_SIZE,
             )),
-            FieldType::Vec(v) => Box::new(ListBuilder::<Box<dyn ArrayBuilder>>::new(Box::new(
-                v.make_builder(schema),
-            ))),
+            FieldType::Vec(v) => {
+                let field: Box<dyn ArrayBuilder> = match &**v {
+                    FieldType::Unknown => Box::new(StringBuilder::new()),
+                    v => Box::new(v.make_builder(schema)),
+                };
+                Box::new(ListBuilder::new(field))
+            }
             FieldType::Empty => Box::new(BooleanBuilder::new()),
             FieldType::Unknown => panic!("cannot write unknown type"),
         }
