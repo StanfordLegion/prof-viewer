@@ -209,7 +209,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         field_name: &str,
         field_type: &FieldType,
     ) -> duckdb::Result<()> {
-        info!("add_entry_field {field_name} {field_type:?}");
+        info!("Adding items column {field_name} of type {field_type:?}");
         conn.execute(
             &format!(
                 "ALTER TABLE items ADD COLUMN {} {}",
@@ -229,7 +229,7 @@ impl<T: DeferredDataSource> DataSourceDuckDBWriter<T> {
         old_type: &FieldType,
         new_type: &FieldType,
     ) -> duckdb::Result<()> {
-        info!("upgrade_entry_field {field_name} {old_type:?} {new_type:?}");
+        info!("Upgrading items column {field_name} from {old_type:?} to {new_type:?}");
         conn.execute(
             &SqlType(old_type).upgrade_column("items", field_name, &SqlType(new_type)),
             [],

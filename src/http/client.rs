@@ -80,7 +80,7 @@ impl HTTPClientDataSource {
     where
         T: 'static + Sync + Send + for<'a> Deserialize<'a>,
     {
-        info!("fetch: {}", url);
+        info!("Fetching: {}", url);
         let request = self
             .client
             .get(url)
@@ -105,7 +105,7 @@ impl HTTPClientDataSource {
     ) where
         T: 'static + Sync + Send + for<'a> Deserialize<'a>,
     {
-        info!("fetch: {}", url);
+        info!("Fetching: {}", url);
         let request = self
             .client
             .get(url)

@@ -209,9 +209,7 @@ impl ArrowSchema {
                 let (field_name, _) = &slot_fields[slot];
                 let mut warnings = DUPLICATE_WARNINGS.lock().unwrap();
                 if !warnings.contains(field_name) {
-                    println!(
-                        "Warning: skipping one or more duplicate entries for field {field_name}"
-                    );
+                    warn!("Skipping one or more duplicate entries for field {field_name}");
                     warnings.insert(field_name.to_string());
                 }
             }
