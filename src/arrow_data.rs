@@ -10,6 +10,7 @@ use duckdb::arrow::{
     error::ArrowError,
     record_batch::RecordBatch,
 };
+use log::warn;
 
 use crate::data::{
     self, DataSourceDescription, DataSourceInfo, EntryID, FieldID, ItemField, ItemLink,
