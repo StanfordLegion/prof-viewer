@@ -2238,9 +2238,22 @@ impl ProfApp {
         let fraction = delta_x / slot_width;
         let time_delta = (fraction * cx.view_interval.duration_ns() as f32) as i64;
         let interval = cx.view_interval.translate(-time_delta);
+        let interval = Self::clamp_interval(interval, cx.total_interval);
 
         ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
         ProfApp::update_interval_select_state(cx);
+    }
+
+    /// Clamp an interval so it stays within bounds, preserving its duration.
+    fn clamp_interval(interval: Interval, bounds: Interval) -> Interval {
+        let duration = interval.duration_ns();
+        if interval.start.0 < bounds.start.0 {
+            Interval::new(bounds.start, Timestamp(bounds.start.0 + duration))
+        } else if interval.stop.0 > bounds.stop.0 {
+            Interval::new(Timestamp(bounds.stop.0 - duration), bounds.stop)
+        } else {
+            interval
+        }
     }
 
     fn horizontal_scroll_bar(ui: &mut egui::Ui, cx: &mut Context) {
@@ -2257,14 +2270,17 @@ impl ProfApp {
             return;
         }
 
-        // Bar dimensions — positioned at bottom of the panel, aligned with slot_rect
+        // Bar dimensions — positioned at bottom of the visible panel area,
+        // aligned with slot_rect horizontally. Use max_rect() to get the
+        // full CentralPanel bounds (not min_rect which may extend past the
+        // visible area due to scroll content).
         let scroll_style = &ui.style().spacing.scroll;
         let bar_width = scroll_style.bar_width;
         let rounding = scroll_style.bar_width * 0.5;
-        let ui_rect = ui.min_rect();
+        let panel_rect = ui.max_rect();
         let track_rect = Rect::from_min_max(
-            Pos2::new(slot_rect.min.x, ui_rect.max.y - bar_width),
-            Pos2::new(slot_rect.max.x, ui_rect.max.y),
+            Pos2::new(slot_rect.min.x, panel_rect.max.y - bar_width),
+            Pos2::new(slot_rect.max.x, panel_rect.max.y),
         );
 
         // Calculate thumb size and position
@@ -2301,6 +2317,7 @@ impl ProfApp {
                 let drag_frac = response.drag_delta().x / available_travel;
                 let time_delta = (drag_frac as f64 * total_duration) as i64;
                 let interval = cx.view_interval.translate(time_delta);
+                let interval = Self::clamp_interval(interval, cx.total_interval);
                 ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
                 ProfApp::update_interval_select_state(cx);
             }
@@ -2314,6 +2331,7 @@ impl ProfApp {
                     Timestamp(center.0 - half_duration),
                     Timestamp(center.0 + half_duration),
                 );
+                let interval = Self::clamp_interval(interval, cx.total_interval);
                 ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
                 ProfApp::update_interval_select_state(cx);
             }
