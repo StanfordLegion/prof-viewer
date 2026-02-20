@@ -2220,6 +2220,29 @@ impl ProfApp {
         }
     }
 
+    fn trackpad_scroll(ctx: &egui::Context, cx: &mut Context) {
+        let Some(slot_rect) = cx.slot_rect else {
+            return;
+        };
+
+        let delta_x = ctx.input(|i| i.smooth_scroll_delta.x);
+        if delta_x == 0.0 {
+            return;
+        }
+
+        let slot_width = slot_rect.width();
+        if slot_width <= 0.0 {
+            return;
+        }
+
+        let fraction = delta_x / slot_width;
+        let time_delta = (fraction * cx.view_interval.duration_ns() as f32) as i64;
+        let interval = cx.view_interval.translate(-time_delta);
+
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
+        ProfApp::update_interval_select_state(cx);
+    }
+
     fn display_controls(ui: &mut egui::Ui, mode: &mut ItemLinkNavigationMode) {
         fn show_row_ui(
             body: &mut egui_extras::TableBody<'_>,
@@ -2638,6 +2661,7 @@ impl eframe::App for ProfApp {
             }
 
             Self::cursor(ui, cx);
+            Self::trackpad_scroll(ctx, cx);
         });
 
         egui::Window::new("Controls")
