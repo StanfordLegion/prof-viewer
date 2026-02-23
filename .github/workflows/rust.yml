@@ -19,8 +19,20 @@ jobs:
       - run: cargo check --all-features --all-targets
 
   check_mac:
-    name: Check macOS
-    runs-on: macos-13
+    name: Check macOS (Intel)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.1
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --no-default-features --lib
+      - run: cargo check --no-default-features --features client --all-targets
+      - run: cargo check --no-default-features --features server --lib
+      - run: cargo check --all-features --all-targets
+
+  check_mac:
+    name: Check macOS (ARM)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85.1
