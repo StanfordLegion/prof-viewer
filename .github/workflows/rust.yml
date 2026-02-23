@@ -18,7 +18,7 @@ jobs:
       - run: cargo check --no-default-features --features server --lib
       - run: cargo check --all-features --all-targets
 
-  check_mac:
+  check_mac_intel:
     name: Check macOS (Intel)
     runs-on: macos-15-intel
     steps:
@@ -30,7 +30,7 @@ jobs:
       - run: cargo check --no-default-features --features server --lib
       - run: cargo check --all-features --all-targets
 
-  check_mac:
+  check_mac_arm:
     name: Check macOS (ARM)
     runs-on: macos-15
     steps:
