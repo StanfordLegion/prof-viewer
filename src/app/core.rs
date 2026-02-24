@@ -2220,6 +2220,139 @@ impl ProfApp {
         }
     }
 
+    fn trackpad_scroll(ctx: &egui::Context, cx: &mut Context) {
+        let Some(slot_rect) = cx.slot_rect else {
+            return;
+        };
+
+        let delta_x = ctx.input(|i| i.smooth_scroll_delta.x);
+        if delta_x == 0.0 {
+            return;
+        }
+
+        let slot_width = slot_rect.width();
+        if slot_width <= 0.0 {
+            return;
+        }
+
+        let fraction = delta_x / slot_width;
+        let time_delta = (fraction * cx.view_interval.duration_ns() as f32) as i64;
+        let interval = cx.view_interval.translate(-time_delta);
+        let interval = Self::clamp_interval(interval, cx.total_interval);
+
+        ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
+        ProfApp::update_interval_select_state(cx);
+    }
+
+    /// Clamp an interval so it stays within bounds, preserving its duration.
+    fn clamp_interval(interval: Interval, bounds: Interval) -> Interval {
+        let duration = interval.duration_ns();
+        if interval.start.0 < bounds.start.0 {
+            Interval::new(bounds.start, Timestamp(bounds.start.0 + duration))
+        } else if interval.stop.0 > bounds.stop.0 {
+            Interval::new(Timestamp(bounds.stop.0 - duration), bounds.stop)
+        } else {
+            interval
+        }
+    }
+
+    fn horizontal_scroll_bar(ui: &mut egui::Ui, cx: &mut Context) {
+        // Only show when zoomed in
+        if cx.view_interval == cx.total_interval {
+            return;
+        }
+        let Some(slot_rect) = cx.slot_rect else {
+            return;
+        };
+
+        let total_duration = cx.total_interval.duration_ns() as f64;
+        if total_duration <= 0.0 {
+            return;
+        }
+
+        // Bar dimensions — positioned at bottom of the visible panel area,
+        // aligned with slot_rect horizontally. Use max_rect() to get the
+        // full CentralPanel bounds (not min_rect which may extend past the
+        // visible area due to scroll content).
+        let scroll_style = &ui.style().spacing.scroll;
+        let bar_width = scroll_style.bar_width;
+        let rounding = scroll_style.bar_width * 0.5;
+        let panel_rect = ui.max_rect();
+        let track_rect = Rect::from_min_max(
+            Pos2::new(slot_rect.min.x, panel_rect.max.y - bar_width),
+            Pos2::new(slot_rect.max.x, panel_rect.max.y),
+        );
+
+        // Calculate thumb size and position
+        let view_duration = cx.view_interval.duration_ns() as f64;
+        let thumb_frac = (view_duration / total_duration) as f32;
+        let track_width = track_rect.width();
+        let min_thumb_width = bar_width * 2.0;
+        let thumb_width = (thumb_frac * track_width).max(min_thumb_width);
+        let available_travel = track_width - thumb_width;
+
+        let view_start_frac = cx.total_interval.unlerp(cx.view_interval.start);
+        let max_start_frac = 1.0 - thumb_frac;
+        let thumb_offset = if max_start_frac > 0.0 {
+            (view_start_frac / max_start_frac) * available_travel
+        } else {
+            0.0
+        };
+
+        let thumb_rect = Rect::from_min_size(
+            Pos2::new(track_rect.left() + thumb_offset, track_rect.min.y),
+            Vec2::new(thumb_width, bar_width),
+        );
+
+        // Interaction
+        let response = ui.interact(
+            track_rect,
+            egui::Id::new("horizontal_scroll_bar"),
+            egui::Sense::click_and_drag(),
+        );
+
+        // Handle drag to pan
+        if response.dragged() {
+            if available_travel > 0.0 {
+                let drag_frac = response.drag_delta().x / available_travel;
+                let time_delta = (drag_frac as f64 * total_duration) as i64;
+                let interval = cx.view_interval.translate(time_delta);
+                let interval = Self::clamp_interval(interval, cx.total_interval);
+                ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
+                ProfApp::update_interval_select_state(cx);
+            }
+        } else if response.clicked() {
+            // Click on track: center view at clicked position
+            if let Some(pos) = response.interact_pointer_pos() {
+                let click_frac = (pos.x - track_rect.left()) / track_width;
+                let center = cx.total_interval.lerp(click_frac);
+                let half_duration = cx.view_interval.duration_ns() / 2;
+                let interval = Interval::new(
+                    Timestamp(center.0 - half_duration),
+                    Timestamp(center.0 + half_duration),
+                );
+                let interval = Self::clamp_interval(interval, cx.total_interval);
+                ProfApp::update_view_interval(cx, interval, IntervalOrigin::Pan);
+                ProfApp::update_interval_select_state(cx);
+            }
+        }
+
+        // Draw track
+        let visuals = ui.visuals();
+        let track_color = visuals.extreme_bg_color;
+        ui.painter().rect_filled(track_rect, rounding, track_color);
+
+        // Draw thumb with state-dependent color
+        let thumb_color = if response.dragged() {
+            visuals.widgets.active.bg_fill
+        } else if response.hovered() {
+            visuals.widgets.hovered.bg_fill
+        } else {
+            visuals.widgets.inactive.bg_fill
+        };
+        ui.painter().rect_filled(thumb_rect, rounding, thumb_color);
+    }
+
     fn display_controls(ui: &mut egui::Ui, mode: &mut ItemLinkNavigationMode) {
         fn show_row_ui(
             body: &mut egui_extras::TableBody<'_>,
@@ -2638,6 +2771,8 @@ impl eframe::App for ProfApp {
             }
 
             Self::cursor(ui, cx);
+            Self::horizontal_scroll_bar(ui, cx);
+            Self::trackpad_scroll(ctx, cx);
         });
 
         egui::Window::new("Controls")
