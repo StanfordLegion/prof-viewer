@@ -1925,12 +1925,6 @@ impl ProfApp {
             result.last_update = Some(Instant::now());
         }
 
-        // Set solid scroll bar (default from egui pre-0.24)
-        // The new default "thin" style isn't clickable with our canvas widget
-        cc.egui_ctx.style_mut(|style| {
-            style.spacing.scroll = egui::style::ScrollStyle::solid();
-        });
-
         result
     }
 
@@ -2600,6 +2594,12 @@ impl eframe::App for ProfApp {
             last_update,
             ..
         } = self;
+
+        // Set solid scroll bar (default from egui pre-0.24)
+        // The new default "thin" style isn't clickable with our canvas widget
+        ctx.style_mut(|style| {
+            style.spacing.scroll = egui::style::ScrollStyle::solid();
+        });
 
         if let Some(mut source) = pending_data_sources.pop_front() {
             // We made one request, so we know there is always zero or one
