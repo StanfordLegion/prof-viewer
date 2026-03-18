@@ -302,7 +302,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             let fresh_tile_ids: Vec<_> = tile_ids
                 .iter()
                 .filter(|tile| last_level.binary_search(tile).is_err())
-                .map(|tile| *tile)
+                .copied()
                 .collect();
 
             if fresh_tile_ids.is_empty() {
@@ -420,8 +420,8 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             // Don't fetch partial tiles that are too small to be subdivided
             let fetch_partial_tile_ids: Vec<_> = tile_ids
                 .iter()
-                .map(|tile| *tile)
                 .filter(|tile| !refetch_full_tile_ids.contains(tile))
+                .copied()
                 .collect();
 
             // Fetch partial tiles (to be further subdivided)
