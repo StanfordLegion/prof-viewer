@@ -381,8 +381,9 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                     .entry(tile)
                     .and_modify(|s| *s = max(*s, size))
                     .or_insert(size);
+                let save = unwritten_tiles.entry(tile).or_insert_with(Vec::new);
                 if let Some(t) = unwritten_tile {
-                    unwritten_tiles.entry(tile).or_insert_with(Vec::new).push(t);
+                    save.push(t);
                 }
             }
 
