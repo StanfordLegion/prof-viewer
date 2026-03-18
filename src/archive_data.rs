@@ -285,18 +285,19 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                         if size <= self.min_tile_size {
                             vec![tile]
                         } else {
-                            // FIXME: use branch_factor
-                            let center = tile.0.center();
-                            vec![
-                                TileID(Interval::new(tile.0.start, center)),
-                                TileID(Interval::new(center, tile.0.stop)),
-                            ]
+                            let branch_factor = self.branch_factor as i64;
+                            let duration = tile.0.duration_ns();
+                            (0..branch_factor)
+                                .map(|i| {
+                                    let start = Timestamp(duration * i / branch_factor);
+                                    let stop = Timestamp(duration * (i + 1) / branch_factor);
+                                    TileID(Interval::new(start, stop).translate(tile.0.start.0))
+                                })
+                                .collect()
                         }
                     })
                     .collect()
             };
-
-            dbg!(&tile_ids);
 
             let fresh_tile_ids: Vec<_> = tile_ids
                 .iter()
@@ -304,7 +305,9 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 .map(|tile| *tile)
                 .collect();
 
-            dbg!(&fresh_tile_ids);
+            if fresh_tile_ids.is_empty() {
+                break;
+            }
 
             let full = level == self.levels - 1;
 
@@ -387,13 +390,17 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 }
             }
 
-            dbg!(&max_size);
-
-            last_level = tile_ids.clone();
             last_level_size = tile_ids
                 .iter()
-                .map(|tile| *max_size.get(tile).unwrap())
+                .map(|tile| {
+                    if let Some(size) = max_size.get(tile) {
+                        *size
+                    } else {
+                        last_level_size[last_level.binary_search(tile).unwrap()]
+                    }
+                })
                 .collect();
+            last_level = tile_ids.clone();
 
             let mut refetch_full_tile_ids = BTreeSet::new();
             rayon::in_place_scope(|s| {
