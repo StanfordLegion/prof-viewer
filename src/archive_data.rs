@@ -344,7 +344,6 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                     EntryIndex::Summary => {}
                     EntryIndex::Slot(..) => {
                         for tile_id in &fresh_tile_ids {
-                            self.data_source.fetch_slot_tile(entry_id, *tile_id, full);
                             self.data_source
                                 .fetch_slot_meta_tile(entry_id, *tile_id, full);
                         }
