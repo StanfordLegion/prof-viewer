@@ -1,3 +1,5 @@
+use std::cmp::max;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, create_dir, remove_dir_all};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -5,7 +7,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::data::{
-    self, DataSourceInfo, EntryID, EntryIDSlug, EntryIndex, EntryInfo, TileID, TileSet,
+    self, DataSourceInfo, EntryID, EntryIDSlug, EntryIndex, EntryInfo, Field, FieldID,
+    SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 use crate::http::schema::TileRequestRef;
@@ -15,6 +18,7 @@ pub struct DataSourceArchiveWriter<T: DeferredDataSource> {
     data_source: CountingDeferredDataSource<T>,
     levels: u32,
     branch_factor: u64,
+    min_tile_size: u64,
     path: PathBuf,
     force: bool,
     zstd_compression: i32,
@@ -91,11 +95,35 @@ fn walk_entry_list(info: &EntryInfo) -> Vec<EntryID> {
     result
 }
 
+fn compute_tile_size(tile: &SlotMetaTile, num_items_field: FieldID, min_tile_size: u64) -> u64 {
+    let mut result: u64 = 0;
+    for row in &tile.data.items {
+        for item in row {
+            if let Some(num_items) = item.fields.iter().find(|f| f.0 == num_items_field) {
+                let Field::U64(count) = num_items.1 else {
+                    panic!("Expected Field::U64 value in num_items_field");
+                };
+                result += count;
+            } else {
+                result += 1;
+            }
+
+            // Once we exceed the min_tile_size we don't care about the result,
+            // so just return.
+            if result > min_tile_size {
+                return result;
+            }
+        }
+    }
+    result
+}
+
 impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
     pub fn new(
         data_source: T,
         levels: u32,
         branch_factor: u64,
+        min_tile_size: u64,
         path: impl AsRef<Path>,
         force: bool,
         zstd_compression: i32,
@@ -106,6 +134,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             data_source: CountingDeferredDataSource::new(data_source),
             levels,
             branch_factor,
+            min_tile_size,
             path: path.as_ref().to_owned(),
             force,
             zstd_compression,
@@ -117,47 +146,90 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         self.data_source.get_infos().pop()
     }
 
-    fn write_info(&mut self, info: DataSourceInfo, scope: &rayon::Scope<'_>) {
+    fn write_info(&self, info: DataSourceInfo, scope: &rayon::Scope<'_>) {
         let path = self.path.join("info");
         spawn_write(path, info, self.zstd_compression, scope);
     }
 
-    fn write_summary_tiles(&mut self, scope: &rayon::Scope<'_>) {
+    fn write_summary_tile(&self, tile: SummaryTile, scope: &rayon::Scope<'_>) {
+        let mut path = self.path.join("summary_tile");
+        let req = TileRequestRef {
+            entry_id: &tile.entry_id,
+            tile_id: tile.tile_id,
+        };
+        path.push(req.to_slug());
+        spawn_write(path, tile, self.zstd_compression, scope);
+    }
+
+    fn write_slot_tile(&self, tile: SlotTile, scope: &rayon::Scope<'_>) {
+        let mut path = self.path.join("slot_tile");
+        let req = TileRequestRef {
+            entry_id: &tile.entry_id,
+            tile_id: tile.tile_id,
+        };
+        path.push(req.to_slug());
+        spawn_write(path, tile, self.zstd_compression, scope);
+    }
+
+    fn write_slot_meta_tile(&self, tile: SlotMetaTile, scope: &rayon::Scope<'_>) {
+        let mut path = self.path.join("slot_meta_tile");
+        let req = TileRequestRef {
+            entry_id: &tile.entry_id,
+            tile_id: tile.tile_id,
+        };
+        path.push(req.to_slug());
+        spawn_write(path, tile, self.zstd_compression, scope);
+    }
+
+    fn progress_summary_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_summary_tiles() {
             let tile = tile.expect("writing summary tile failed");
-            let mut path = self.path.join("summary_tile");
-            let req = TileRequestRef {
-                entry_id: &tile.entry_id,
-                tile_id: tile.tile_id,
-            };
-            path.push(req.to_slug());
-            spawn_write(path, tile, self.zstd_compression, scope);
+            self.write_summary_tile(tile, scope);
         }
     }
 
-    fn write_slot_tiles(&mut self, scope: &rayon::Scope<'_>) {
+    fn progress_slot_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_slot_tiles() {
             let tile = tile.expect("writing slot tile failed");
-            let mut path = self.path.join("slot_tile");
-            let req = TileRequestRef {
-                entry_id: &tile.entry_id,
-                tile_id: tile.tile_id,
-            };
-            path.push(req.to_slug());
-            spawn_write(path, tile, self.zstd_compression, scope);
+            self.write_slot_tile(tile, scope);
         }
     }
 
-    fn write_slot_meta_tiles(&mut self, scope: &rayon::Scope<'_>) {
+    fn progress_slot_meta_tiles(&mut self, scope: &rayon::Scope<'_>) {
         for (tile, _) in self.data_source.get_slot_meta_tiles() {
             let tile = tile.expect("writing slot meta tile failed");
-            let mut path = self.path.join("slot_meta_tile");
-            let req = TileRequestRef {
-                entry_id: &tile.entry_id,
-                tile_id: tile.tile_id,
-            };
-            path.push(req.to_slug());
-            spawn_write(path, tile, self.zstd_compression, scope);
+            self.write_slot_meta_tile(tile, scope);
+        }
+    }
+
+    fn progress_slot_meta_tiles_over_size(
+        &mut self,
+        num_items_field: FieldID,
+        min_tile_size: u64,
+        full: bool,
+        scope: &rayon::Scope<'_>,
+    ) -> Vec<(TileID, u64, Option<SlotMetaTile>)> {
+        let mut result = Vec::new();
+        for (tile, _) in self.data_source.get_slot_meta_tiles() {
+            let tile = tile.expect("writing slot meta tile failed");
+
+            let size = compute_tile_size(&tile, num_items_field, min_tile_size);
+            if !full && size <= min_tile_size {
+                // Don't write it now in case we want to request the full tile
+                result.push((tile.tile_id, size, Some(tile)));
+            } else {
+                result.push((tile.tile_id, size, None));
+                self.write_slot_meta_tile(tile, scope);
+            }
+        }
+        result
+    }
+
+    fn progress_all_remaining(&mut self, max_in_flight_requests: u64, scope: &rayon::Scope<'_>) {
+        while self.data_source.outstanding_requests() > max_in_flight_requests {
+            self.progress_summary_tiles(scope);
+            self.progress_slot_tiles(scope);
+            self.progress_slot_meta_tiles(scope);
         }
     }
 
@@ -174,6 +246,11 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             info = self.check_info();
         }
         let mut info = info.unwrap().expect("fetch_info failed");
+
+        let num_items_field = info
+            .field_schema
+            .get_id("Number of Items")
+            .expect("Cannot archive a DataSource unless it has a Number of Items field");
 
         let entry_ids = walk_entry_list(&info.entry_info);
         for entry_id in &entry_ids {
@@ -194,45 +271,79 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
         let mut tile_set = Vec::new();
 
+        let mut last_level: Vec<TileID> = Vec::new(); //TileID(info.interval)];
+        let mut last_level_size: Vec<u64> = Vec::new(); //vec![u64::MAX];
+
         for level in 0..self.levels {
-            let num_tiles = self.branch_factor.pow(level) as i64;
-            let duration = info.interval.duration_ns();
-            let tile_ids: Vec<_> = (0..num_tiles)
-                .map(|i| {
-                    let start = Timestamp(duration * i / num_tiles);
-                    let stop = Timestamp(duration * (i + 1) / num_tiles);
-                    TileID(Interval::new(start, stop))
-                })
+            let tile_ids = if last_level.is_empty() {
+                vec![TileID(info.interval)]
+            } else {
+                last_level
+                    .iter()
+                    .zip(last_level_size.iter())
+                    .flat_map(|(&tile, &size)| {
+                        if size <= self.min_tile_size {
+                            vec![tile]
+                        } else {
+                            // FIXME: use branch_factor
+                            let center = tile.0.center();
+                            vec![
+                                TileID(Interval::new(tile.0.start, center)),
+                                TileID(Interval::new(center, tile.0.stop)),
+                            ]
+                        }
+                    })
+                    .collect()
+            };
+
+            dbg!(&tile_ids);
+
+            let fresh_tile_ids: Vec<_> = tile_ids
+                .iter()
+                .filter(|tile| last_level.binary_search(tile).is_err())
+                .map(|tile| *tile)
                 .collect();
-            tile_set.push(tile_ids);
-        }
 
-        info.tile_set = TileSet {
-            tiles: tile_set.clone(),
-        };
+            dbg!(&fresh_tile_ids);
 
-        rayon::in_place_scope(|s| {
-            self.write_info(info, s);
-        });
-
-        for level in 0..self.levels {
-            let tile_ids = &tile_set[level as usize];
             let full = level == self.levels - 1;
 
-            println!("Writing level {} with {} tiles", level, tile_ids.len());
+            println!(
+                "Writing level {} with {} tiles",
+                level,
+                fresh_tile_ids.len()
+            );
+
+            // We're going to do a three-pass algorithm:
+            //
+            //  1. Fetch meta tiles. If they're big enough write them right
+            //     away.
+            //
+            //  2. If any tile is too small, we need to look at the set as a
+            //     whole to figure out the maximum tile size in this
+            //     interval. That's because we only have a single tile set for
+            //     the entire entry tree. If ALL the tiles are below the
+            //     threshold, throw away and refetch all tiles so that we have
+            //     a complete, full tile for the last level of the tile set.
+            //
+            //  3. Otherwise at least one tile is above the threshold so
+            //     proceed to write everything out (even if some tiles are
+            //     below the threshold) and then fetch and write all the
+            //     slot/summary tiles as well.
+            //
+            // This preserves the property that we minimize refetch (we refetch
+            // tiles exactly when we reach the finest level of detail we're
+            // going to render) and never fetches a tile twice otherwise.
 
             const MAX_IN_FLIGHT_REQUESTS: u64 = 100;
 
+            // Initial fetch of meta tiles to compute sizes.
+            let mut result_sizes = Vec::new();
             for entry_id in &entry_ids {
                 match entry_id.last_index().unwrap() {
-                    EntryIndex::Summary => {
-                        for tile_id in tile_ids {
-                            self.data_source
-                                .fetch_summary_tile(entry_id, *tile_id, full);
-                        }
-                    }
+                    EntryIndex::Summary => {}
                     EntryIndex::Slot(..) => {
-                        for tile_id in tile_ids {
+                        for tile_id in &fresh_tile_ids {
                             self.data_source.fetch_slot_tile(entry_id, *tile_id, full);
                             self.data_source
                                 .fetch_slot_meta_tile(entry_id, *tile_id, full);
@@ -243,20 +354,130 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 // Bound the number of in-flight requests so we don't use too much memory.
                 rayon::in_place_scope(|s| {
                     while self.data_source.outstanding_requests() > MAX_IN_FLIGHT_REQUESTS {
-                        self.write_summary_tiles(s);
-                        self.write_slot_tiles(s);
-                        self.write_slot_meta_tiles(s);
+                        result_sizes.extend(self.progress_slot_meta_tiles_over_size(
+                            num_items_field,
+                            self.min_tile_size,
+                            full,
+                            s,
+                        ));
                     }
                 });
             }
+
+            rayon::in_place_scope(|s| {
+                while self.data_source.outstanding_requests() > 0 {
+                    result_sizes.extend(self.progress_slot_meta_tiles_over_size(
+                        num_items_field,
+                        self.min_tile_size,
+                        full,
+                        s,
+                    ));
+                }
+            });
+
+            let mut max_size = BTreeMap::new();
+            let mut unwritten_tiles = BTreeMap::new();
+            for (tile, size, unwritten_tile) in result_sizes {
+                max_size
+                    .entry(tile)
+                    .and_modify(|s| *s = max(*s, size))
+                    .or_insert(size);
+                if let Some(t) = unwritten_tile {
+                    unwritten_tiles.entry(tile).or_insert_with(Vec::new).push(t);
+                }
+            }
+
+            dbg!(&max_size);
+
+            last_level = tile_ids.clone();
+            last_level_size = tile_ids
+                .iter()
+                .map(|tile| *max_size.get(tile).unwrap())
+                .collect();
+
+            let mut refetch_full_tile_ids = BTreeSet::new();
+            rayon::in_place_scope(|s| {
+                for (tile, size) in max_size {
+                    let unwritten = unwritten_tiles.remove(&tile).unwrap();
+                    assert!(!unwritten.is_empty() || full);
+                    if size <= self.min_tile_size {
+                        refetch_full_tile_ids.insert(tile);
+                    } else {
+                        for t in unwritten {
+                            self.write_slot_meta_tile(t, s);
+                        }
+                    }
+                }
+            });
+
+            // Don't fetch partial tiles that are too small to be subdivided
+            let fetch_partial_tile_ids: Vec<_> = tile_ids
+                .iter()
+                .map(|tile| *tile)
+                .filter(|tile| !refetch_full_tile_ids.contains(tile))
+                .collect();
+
+            // Fetch partial tiles (to be further subdivided)
+            for entry_id in &entry_ids {
+                match entry_id.last_index().unwrap() {
+                    EntryIndex::Summary => {
+                        for tile_id in &fetch_partial_tile_ids {
+                            self.data_source
+                                .fetch_summary_tile(entry_id, *tile_id, full);
+                        }
+                    }
+                    EntryIndex::Slot(..) => {
+                        for tile_id in &fetch_partial_tile_ids {
+                            self.data_source.fetch_slot_tile(entry_id, *tile_id, full);
+                        }
+                    }
+                }
+
+                // Bound the number of in-flight requests so we don't use too much memory.
+                rayon::in_place_scope(|s| {
+                    self.progress_all_remaining(MAX_IN_FLIGHT_REQUESTS, s);
+                });
+            }
+
+            rayon::in_place_scope(|s| {
+                self.progress_all_remaining(0, s);
+            });
+
+            // Fetch full tiles (not to be subdivided)
+            for entry_id in &entry_ids {
+                match entry_id.last_index().unwrap() {
+                    EntryIndex::Summary => {
+                        for tile_id in &refetch_full_tile_ids {
+                            self.data_source
+                                .fetch_summary_tile(entry_id, *tile_id, true);
+                        }
+                    }
+                    EntryIndex::Slot(..) => {
+                        for tile_id in &refetch_full_tile_ids {
+                            self.data_source.fetch_slot_tile(entry_id, *tile_id, true);
+                            self.data_source
+                                .fetch_slot_meta_tile(entry_id, *tile_id, true);
+                        }
+                    }
+                }
+
+                // Bound the number of in-flight requests so we don't use too much memory.
+                rayon::in_place_scope(|s| {
+                    self.progress_all_remaining(MAX_IN_FLIGHT_REQUESTS, s);
+                });
+            }
+
+            rayon::in_place_scope(|s| {
+                self.progress_all_remaining(0, s);
+            });
+
+            tile_set.push(tile_ids);
         }
 
+        info.tile_set = TileSet { tiles: tile_set };
+
         rayon::in_place_scope(|s| {
-            while self.data_source.outstanding_requests() > 0 {
-                self.write_summary_tiles(s);
-                self.write_slot_tiles(s);
-                self.write_slot_meta_tiles(s);
-            }
+            self.write_info(info, s);
         });
 
         std::fs::write(
