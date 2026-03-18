@@ -225,8 +225,8 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         result
     }
 
-    fn progress_all_remaining(&mut self, max_in_flight_requests: u64, scope: &rayon::Scope<'_>) {
-        while self.data_source.outstanding_requests() > max_in_flight_requests {
+    fn progress_all_remaining(&mut self, min_in_flight_requests: u64, scope: &rayon::Scope<'_>) {
+        while self.data_source.outstanding_requests() > min_in_flight_requests {
             self.progress_summary_tiles(scope);
             self.progress_slot_tiles(scope);
             self.progress_slot_meta_tiles(scope);
@@ -338,7 +338,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             // tiles exactly when we reach the finest level of detail we're
             // going to render) and never fetches a tile twice otherwise.
 
-            const MAX_IN_FLIGHT_REQUESTS: u64 = 100;
+            const MIN_IN_FLIGHT_REQUESTS: u64 = 100;
 
             // Initial fetch of meta tiles to compute sizes.
             let mut result_sizes = Vec::new();
@@ -355,7 +355,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
                 // Bound the number of in-flight requests so we don't use too much memory.
                 rayon::in_place_scope(|s| {
-                    while self.data_source.outstanding_requests() > MAX_IN_FLIGHT_REQUESTS {
+                    while self.data_source.outstanding_requests() > MIN_IN_FLIGHT_REQUESTS {
                         result_sizes.extend(self.progress_slot_meta_tiles_over_size(
                             num_items_field,
                             self.min_tile_size,
@@ -442,7 +442,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
                 // Bound the number of in-flight requests so we don't use too much memory.
                 rayon::in_place_scope(|s| {
-                    self.progress_all_remaining(MAX_IN_FLIGHT_REQUESTS, s);
+                    self.progress_all_remaining(MIN_IN_FLIGHT_REQUESTS, s);
                 });
             }
 
@@ -470,7 +470,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
                 // Bound the number of in-flight requests so we don't use too much memory.
                 rayon::in_place_scope(|s| {
-                    self.progress_all_remaining(MAX_IN_FLIGHT_REQUESTS, s);
+                    self.progress_all_remaining(MIN_IN_FLIGHT_REQUESTS, s);
                 });
             }
 
