@@ -233,6 +233,39 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
+    fn fetch_and_write_entry_tiles<'a>(
+        &mut self,
+        entry_ids: &[EntryID],
+        tile_ids: impl IntoIterator<Item = &'a TileID> + std::marker::Copy,
+        slot_meta: bool,
+        full: bool,
+        min_in_flight_requests: u64,
+        scope: &rayon::Scope<'_>,
+    ) {
+        for entry_id in entry_ids {
+            match entry_id.last_index().unwrap() {
+                EntryIndex::Summary => {
+                    for tile_id in tile_ids {
+                        self.data_source
+                            .fetch_summary_tile(entry_id, *tile_id, full);
+                    }
+                }
+                EntryIndex::Slot(..) => {
+                    for tile_id in tile_ids {
+                        self.data_source.fetch_slot_tile(entry_id, *tile_id, full);
+                        if slot_meta {
+                            self.data_source
+                                .fetch_slot_meta_tile(entry_id, *tile_id, full);
+                        }
+                    }
+                }
+            }
+
+            // Bound the number of in-flight requests so we don't use too much memory.
+            self.progress_all_remaining(min_in_flight_requests, scope);
+        }
+    }
+
     pub fn write(mut self) -> io::Result<()> {
         self.path = create_unique_dir(&self.path, self.force)?;
         println!("Created output directory {:?}", &self.path);
@@ -340,21 +373,21 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
 
             const MIN_IN_FLIGHT_REQUESTS: u64 = 100;
 
-            // Initial fetch of meta tiles to compute sizes.
+            // Initial fetch of meta tiles to compute sizes
             let mut result_sizes = Vec::new();
-            for entry_id in &entry_ids {
-                match entry_id.last_index().unwrap() {
-                    EntryIndex::Summary => {}
-                    EntryIndex::Slot(..) => {
-                        for tile_id in &fresh_tile_ids {
-                            self.data_source
-                                .fetch_slot_meta_tile(entry_id, *tile_id, full);
+            rayon::in_place_scope(|s| {
+                for entry_id in &entry_ids {
+                    match entry_id.last_index().unwrap() {
+                        EntryIndex::Summary => {}
+                        EntryIndex::Slot(..) => {
+                            for tile_id in &fresh_tile_ids {
+                                self.data_source
+                                    .fetch_slot_meta_tile(entry_id, *tile_id, full);
+                            }
                         }
                     }
-                }
 
-                // Bound the number of in-flight requests so we don't use too much memory.
-                rayon::in_place_scope(|s| {
+                    // Bound the number of in-flight requests so we don't use too much memory.
                     while self.data_source.outstanding_requests() > MIN_IN_FLIGHT_REQUESTS {
                         result_sizes.extend(self.progress_slot_meta_tiles_over_size(
                             num_items_field,
@@ -363,10 +396,8 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                             s,
                         ));
                     }
-                });
-            }
+                }
 
-            rayon::in_place_scope(|s| {
                 while self.data_source.outstanding_requests() > 0 {
                     result_sizes.extend(self.progress_slot_meta_tiles_over_size(
                         num_items_field,
@@ -402,8 +433,10 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 .collect();
             last_level = tile_ids.clone();
 
-            let mut refetch_full_tile_ids = BTreeSet::new();
             rayon::in_place_scope(|s| {
+                // Figure out which tiles to refetch as full (and if refetch
+                // is not required, write the copy we already have)
+                let mut refetch_full_tile_ids = BTreeSet::new();
                 for (tile, size) in max_size {
                     let unwritten = unwritten_tiles.remove(&tile).unwrap();
                     assert!(!unwritten.is_empty() || full);
@@ -415,66 +448,33 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                         }
                     }
                 }
-            });
 
-            // Don't fetch partial tiles that are too small to be subdivided
-            let fetch_partial_tile_ids: Vec<_> = tile_ids
-                .iter()
-                .filter(|tile| !refetch_full_tile_ids.contains(tile))
-                .copied()
-                .collect();
+                let fetch_partial_tile_ids: Vec<_> = tile_ids
+                    .iter()
+                    .filter(|tile| !refetch_full_tile_ids.contains(tile))
+                    .copied()
+                    .collect();
 
-            // Fetch partial tiles (to be further subdivided)
-            for entry_id in &entry_ids {
-                match entry_id.last_index().unwrap() {
-                    EntryIndex::Summary => {
-                        for tile_id in &fetch_partial_tile_ids {
-                            self.data_source
-                                .fetch_summary_tile(entry_id, *tile_id, full);
-                        }
-                    }
-                    EntryIndex::Slot(..) => {
-                        for tile_id in &fetch_partial_tile_ids {
-                            self.data_source.fetch_slot_tile(entry_id, *tile_id, full);
-                        }
-                    }
-                }
+                // Fetch partial tiles
+                self.fetch_and_write_entry_tiles(
+                    &entry_ids,
+                    &fetch_partial_tile_ids,
+                    false,
+                    full,
+                    MIN_IN_FLIGHT_REQUESTS,
+                    s,
+                );
 
-                // Bound the number of in-flight requests so we don't use too much memory.
-                rayon::in_place_scope(|s| {
-                    self.progress_all_remaining(MIN_IN_FLIGHT_REQUESTS, s);
-                });
-            }
+                // Refetch full tiles
+                self.fetch_and_write_entry_tiles(
+                    &entry_ids,
+                    &refetch_full_tile_ids,
+                    true,
+                    true,
+                    MIN_IN_FLIGHT_REQUESTS,
+                    s,
+                );
 
-            rayon::in_place_scope(|s| {
-                self.progress_all_remaining(0, s);
-            });
-
-            // Fetch full tiles (not to be subdivided)
-            for entry_id in &entry_ids {
-                match entry_id.last_index().unwrap() {
-                    EntryIndex::Summary => {
-                        for tile_id in &refetch_full_tile_ids {
-                            self.data_source
-                                .fetch_summary_tile(entry_id, *tile_id, true);
-                        }
-                    }
-                    EntryIndex::Slot(..) => {
-                        for tile_id in &refetch_full_tile_ids {
-                            self.data_source.fetch_slot_tile(entry_id, *tile_id, true);
-                            self.data_source
-                                .fetch_slot_meta_tile(entry_id, *tile_id, true);
-                        }
-                    }
-                }
-
-                // Bound the number of in-flight requests so we don't use too much memory.
-                rayon::in_place_scope(|s| {
-                    self.progress_all_remaining(MIN_IN_FLIGHT_REQUESTS, s);
-                });
-            }
-
-            rayon::in_place_scope(|s| {
                 self.progress_all_remaining(0, s);
             });
 
