@@ -233,7 +233,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
-    fn fetch_and_write_entry_tiles<'a>(
+    fn generate_entry_tiles<'a>(
         &mut self,
         entry_ids: &[EntryID],
         tile_ids: impl IntoIterator<Item = &'a TileID> + std::marker::Copy,
@@ -456,7 +456,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                     .collect();
 
                 // Fetch partial tiles
-                self.fetch_and_write_entry_tiles(
+                self.generate_entry_tiles(
                     &entry_ids,
                     &fetch_partial_tile_ids,
                     false,
@@ -466,7 +466,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                 );
 
                 // Refetch full tiles
-                self.fetch_and_write_entry_tiles(
+                self.generate_entry_tiles(
                     &entry_ids,
                     &refetch_full_tile_ids,
                     true,
