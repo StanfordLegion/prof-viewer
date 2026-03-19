@@ -266,6 +266,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn generate_entry_tiles<'a>(
         &mut self,
         entry_ids: &[EntryID],

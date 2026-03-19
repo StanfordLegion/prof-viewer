@@ -71,6 +71,10 @@ impl NonemptyTiles {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub fn append(&mut self, other: &mut NonemptyTiles) {
         self.0.append(&mut other.0);
     }
@@ -85,7 +89,7 @@ impl NonemptyTiles {
     pub fn mark_nonempty(&mut self, entry_id: &EntryID, tile_id: TileID) {
         self.0
             .entry(entry_id.to_owned())
-            .or_insert_with(BTreeSet::new)
+            .or_default()
             .insert(tile_id);
     }
 }
