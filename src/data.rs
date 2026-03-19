@@ -37,7 +37,7 @@ pub struct DataSourceInfo {
 
 impl DataSourceInfo {
     pub fn is_empty_tile(&self, entry_id: &EntryID, tile_id: TileID) -> bool {
-        !self.nonempty_tiles.is_empty_tile(entry_id, tile_id)
+        self.nonempty_tiles.is_empty_tile(entry_id, tile_id)
     }
 }
 

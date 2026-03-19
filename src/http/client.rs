@@ -28,7 +28,7 @@ use crate::http::url::ensure_directory;
 pub struct HTTPClientDataSource {
     baseurl: Url,
     client: Client,
-    info: Mutex<Option<Arc<DataSourceInfo>>>,
+    info: Mutex<Option<DataSourceInfo>>,
     infos: Arc<Mutex<Vec<data::Result<DataSourceInfo>>>>,
     summary_tiles: Arc<Mutex<Vec<SummaryTileResponse>>>,
     slot_tiles: Arc<Mutex<Vec<SlotTileResponse>>>,
@@ -140,7 +140,7 @@ impl DeferredDataSource for HTTPClientDataSource {
     fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
         let result = std::mem::take(&mut *self.infos.lock().unwrap());
         if let Some(Ok(info)) = result.first() {
-            *self.info.lock().unwrap() = Some(Arc::new(info.clone()));
+            *self.info.lock().unwrap() = Some(info.clone());
         }
         result
     }

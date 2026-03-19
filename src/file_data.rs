@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use serde::Deserialize;
 
@@ -12,7 +12,7 @@ use crate::http::schema::TileRequestRef;
 
 pub struct FileDataSource {
     basedir: PathBuf,
-    info: Mutex<Option<Arc<DataSourceInfo>>>,
+    info: Mutex<Option<DataSourceInfo>>,
 }
 
 impl FileDataSource {
@@ -46,7 +46,7 @@ impl DataSource for FileDataSource {
         let path = self.basedir.join("info");
         let result = self.read_file::<DataSourceInfo>(&path);
         if let Ok(info) = &result {
-            *self.info.lock().unwrap() = Some(Arc::new(info.clone()));
+            *self.info.lock().unwrap() = Some(info.clone());
         }
         result
     }
