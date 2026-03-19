@@ -27,6 +27,18 @@ pub struct DataSourceInfo {
     pub field_schema: FieldSchema,
     #[serde(default)]
     pub warning_message: Option<String>,
+
+    // Track the set of non-empty tiles in static profiles, so if a tile is
+    // empty we can skip fetching it entirely. Users should leave this empty
+    // and the archiver will fill it automatically.
+    #[serde(default)]
+    pub nonempty_tiles: NonemptyTiles,
+}
+
+impl DataSourceInfo {
+    pub fn is_empty_tile(&self, entry_id: &EntryID, tile_id: TileID) -> bool {
+        !self.nonempty_tiles.is_empty_tile(entry_id, tile_id)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -45,6 +57,37 @@ pub enum EntryInfo {
     Summary {
         color: Color32,
     },
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct NonemptyTiles(BTreeMap<EntryID, BTreeSet<TileID>>);
+
+impl NonemptyTiles {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn append(&mut self, other: &mut NonemptyTiles) {
+        self.0.append(&mut other.0);
+    }
+
+    pub fn is_empty_tile(&self, entry_id: &EntryID, tile_id: TileID) -> bool {
+        !self
+            .0
+            .get(entry_id)
+            .is_none_or(|tiles| tiles.contains(&tile_id))
+    }
+
+    pub fn mark_nonempty(&mut self, entry_id: &EntryID, tile_id: TileID) {
+        self.0
+            .entry(entry_id.to_owned())
+            .or_insert_with(BTreeSet::new)
+            .insert(tile_id);
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Default, Deserialize, Serialize)]
@@ -183,7 +226,7 @@ pub struct TileSet {
     pub tiles: Vec<Vec<TileID>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SummaryTileData {
     pub utilization: Vec<UtilPoint>,
 }
@@ -195,7 +238,7 @@ pub struct SummaryTile {
     pub data: SummaryTileData,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SlotTileData {
     pub items: Vec<Vec<Item>>, // row -> [item]
 }
@@ -207,7 +250,13 @@ pub struct SlotTile {
     pub data: SlotTileData,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+impl SlotTile {
+    pub fn is_empty(&self) -> bool {
+        self.data.items.iter().all(|row| row.is_empty())
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SlotMetaTileData {
     pub items: Vec<Vec<ItemMeta>>, // row -> [item]
 }
@@ -217,6 +266,12 @@ pub struct SlotMetaTile {
     pub entry_id: EntryID,
     pub tile_id: TileID,
     pub data: SlotMetaTileData,
+}
+
+impl SlotMetaTile {
+    pub fn is_empty(&self) -> bool {
+        self.data.items.iter().all(|row| row.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

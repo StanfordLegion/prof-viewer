@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::data::{
     self, DataSourceInfo, EntryID, EntryIDSlug, EntryIndex, EntryInfo, Field, FieldID,
-    SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
+    NonemptyTiles, SlotMetaTile, SlotTile, SummaryTile, TileID, TileSet,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource};
 use crate::http::schema::TileRequestRef;
@@ -161,7 +161,17 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         spawn_write(path, tile, self.zstd_compression, scope);
     }
 
-    fn write_slot_tile(&self, tile: SlotTile, scope: &rayon::Scope<'_>) {
+    fn write_slot_tile(
+        &self,
+        tile: SlotTile,
+        nonempty_tiles: &mut NonemptyTiles,
+        scope: &rayon::Scope<'_>,
+    ) {
+        if tile.is_empty() {
+            return;
+        }
+        nonempty_tiles.mark_nonempty(&tile.entry_id, tile.tile_id);
+
         let mut path = self.path.join("slot_tile");
         let req = TileRequestRef {
             entry_id: &tile.entry_id,
@@ -171,7 +181,17 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         spawn_write(path, tile, self.zstd_compression, scope);
     }
 
-    fn write_slot_meta_tile(&self, tile: SlotMetaTile, scope: &rayon::Scope<'_>) {
+    fn write_slot_meta_tile(
+        &self,
+        tile: SlotMetaTile,
+        nonempty_tiles: &mut NonemptyTiles,
+        scope: &rayon::Scope<'_>,
+    ) {
+        if tile.is_empty() {
+            return;
+        }
+        nonempty_tiles.mark_nonempty(&tile.entry_id, tile.tile_id);
+
         let mut path = self.path.join("slot_meta_tile");
         let req = TileRequestRef {
             entry_id: &tile.entry_id,
@@ -188,17 +208,25 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         }
     }
 
-    fn progress_slot_tiles(&mut self, scope: &rayon::Scope<'_>) {
+    fn progress_slot_tiles(
+        &mut self,
+        nonempty_tiles: &mut NonemptyTiles,
+        scope: &rayon::Scope<'_>,
+    ) {
         for (tile, _) in self.data_source.get_slot_tiles() {
             let tile = tile.expect("writing slot tile failed");
-            self.write_slot_tile(tile, scope);
+            self.write_slot_tile(tile, nonempty_tiles, scope);
         }
     }
 
-    fn progress_slot_meta_tiles(&mut self, scope: &rayon::Scope<'_>) {
+    fn progress_slot_meta_tiles(
+        &mut self,
+        nonempty_tiles: &mut NonemptyTiles,
+        scope: &rayon::Scope<'_>,
+    ) {
         for (tile, _) in self.data_source.get_slot_meta_tiles() {
             let tile = tile.expect("writing slot meta tile failed");
-            self.write_slot_meta_tile(tile, scope);
+            self.write_slot_meta_tile(tile, nonempty_tiles, scope);
         }
     }
 
@@ -207,29 +235,34 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         num_items_field: FieldID,
         min_tile_size: u64,
         full: bool,
+        nonempty_tiles: &mut NonemptyTiles,
         scope: &rayon::Scope<'_>,
     ) -> Vec<(TileID, u64, Option<SlotMetaTile>)> {
         let mut result = Vec::new();
         for (tile, _) in self.data_source.get_slot_meta_tiles() {
             let tile = tile.expect("writing slot meta tile failed");
-
             let size = compute_tile_size(&tile, num_items_field, min_tile_size);
             if !full && size <= min_tile_size {
                 // Don't write it now in case we want to request the full tile
                 result.push((tile.tile_id, size, Some(tile)));
             } else {
                 result.push((tile.tile_id, size, None));
-                self.write_slot_meta_tile(tile, scope);
+                self.write_slot_meta_tile(tile, nonempty_tiles, scope);
             }
         }
         result
     }
 
-    fn progress_all_remaining(&mut self, min_in_flight_requests: u64, scope: &rayon::Scope<'_>) {
+    fn progress_all_remaining(
+        &mut self,
+        nonempty_tiles: &mut NonemptyTiles,
+        min_in_flight_requests: u64,
+        scope: &rayon::Scope<'_>,
+    ) {
         while self.data_source.outstanding_requests() > min_in_flight_requests {
             self.progress_summary_tiles(scope);
-            self.progress_slot_tiles(scope);
-            self.progress_slot_meta_tiles(scope);
+            self.progress_slot_tiles(nonempty_tiles, scope);
+            self.progress_slot_meta_tiles(nonempty_tiles, scope);
         }
     }
 
@@ -239,6 +272,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         tile_ids: impl IntoIterator<Item = &'a TileID> + std::marker::Copy,
         slot_meta: bool,
         full: bool,
+        nonempty_tiles: &mut NonemptyTiles,
         min_in_flight_requests: u64,
         scope: &rayon::Scope<'_>,
     ) {
@@ -262,7 +296,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
             }
 
             // Bound the number of in-flight requests so we don't use too much memory.
-            self.progress_all_remaining(min_in_flight_requests, scope);
+            self.progress_all_remaining(nonempty_tiles, min_in_flight_requests, scope);
         }
     }
 
@@ -303,9 +337,10 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
         assert!(info.tile_set.tiles.is_empty());
 
         let mut tile_set = Vec::new();
+        let mut nonempty_tiles = NonemptyTiles::new();
 
-        let mut last_level: Vec<TileID> = Vec::new(); //TileID(info.interval)];
-        let mut last_level_size: Vec<u64> = Vec::new(); //vec![u64::MAX];
+        let mut last_level: Vec<TileID> = Vec::new();
+        let mut last_level_size: Vec<u64> = Vec::new();
 
         for level in 0..self.levels {
             let tile_ids = if last_level.is_empty() {
@@ -393,6 +428,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                             num_items_field,
                             self.min_tile_size,
                             full,
+                            &mut nonempty_tiles,
                             s,
                         ));
                     }
@@ -403,6 +439,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                         num_items_field,
                         self.min_tile_size,
                         full,
+                        &mut nonempty_tiles,
                         s,
                     ));
                 }
@@ -444,7 +481,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                         refetch_full_tile_ids.insert(tile);
                     } else {
                         for t in unwritten {
-                            self.write_slot_meta_tile(t, s);
+                            self.write_slot_meta_tile(t, &mut nonempty_tiles, s);
                         }
                     }
                 }
@@ -461,6 +498,7 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                     &fetch_partial_tile_ids,
                     false,
                     full,
+                    &mut nonempty_tiles,
                     MIN_IN_FLIGHT_REQUESTS,
                     s,
                 );
@@ -471,17 +509,19 @@ impl<T: DeferredDataSource> DataSourceArchiveWriter<T> {
                     &refetch_full_tile_ids,
                     true,
                     true,
+                    &mut nonempty_tiles,
                     MIN_IN_FLIGHT_REQUESTS,
                     s,
                 );
 
-                self.progress_all_remaining(0, s);
+                self.progress_all_remaining(&mut nonempty_tiles, 0, s);
             });
 
             tile_set.push(tile_ids);
         }
 
         info.tile_set = TileSet { tiles: tile_set };
+        info.nonempty_tiles = nonempty_tiles;
 
         rayon::in_place_scope(|s| {
             self.write_info(info, s);

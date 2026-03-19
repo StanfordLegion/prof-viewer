@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::data::{
     self, DataSourceDescription, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, ItemField,
-    ItemLink, ItemUID, SlotMetaTile, SlotTile, SummaryTile, TileID,
+    ItemLink, ItemUID, NonemptyTiles, SlotMetaTile, SlotTile, SummaryTile, TileID,
 };
 use crate::deferred_data::{
     DeferredDataSource, SlotMetaTileResponse, SlotTileResponse, SummaryTileResponse,
@@ -59,6 +59,13 @@ impl MergeDeferredDataSource {
         }
     }
 
+    fn merge_tiles(mut first: NonemptyTiles, mut second: NonemptyTiles) -> NonemptyTiles {
+        let expected_len = first.len() + second.len();
+        first.append(&mut second);
+        assert_eq!(first.len(), expected_len);
+        first
+    }
+
     fn compute_mapping(source_infos: &[DataSourceInfo]) -> Vec<u64> {
         // Compute the mapping from old to new entries (basically the offset
         // of each initial slot)
@@ -110,6 +117,11 @@ impl MergeDeferredDataSource {
             .map(|info| info.entry_info.clone())
             .reduce(Self::merge_entry)
             .unwrap();
+        let nonempty_tiles = source_infos
+            .iter()
+            .map(|info| info.nonempty_tiles.clone())
+            .reduce(Self::merge_tiles)
+            .unwrap();
 
         DataSourceInfo {
             entry_info,
@@ -117,6 +129,7 @@ impl MergeDeferredDataSource {
             tile_set,
             field_schema,
             warning_message,
+            nonempty_tiles,
         }
     }
 
