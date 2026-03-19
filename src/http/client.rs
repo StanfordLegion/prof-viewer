@@ -26,8 +26,9 @@ use crate::http::schema::TileRequestRef;
 use crate::http::url::ensure_directory;
 
 pub struct HTTPClientDataSource {
-    pub baseurl: Url,
-    pub client: Client,
+    baseurl: Url,
+    client: Client,
+    info: Mutex<Option<DataSourceInfo>>,
     infos: Arc<Mutex<Vec<data::Result<DataSourceInfo>>>>,
     summary_tiles: Arc<Mutex<Vec<SummaryTileResponse>>>,
     slot_tiles: Arc<Mutex<Vec<SlotTileResponse>>>,
@@ -69,6 +70,7 @@ impl HTTPClientDataSource {
         Self {
             baseurl: ensure_directory(&baseurl),
             client: ClientBuilder::new().build().unwrap(),
+            info: Mutex::new(None),
             infos: Arc::new(Mutex::new(Vec::new())),
             summary_tiles: Arc::new(Mutex::new(Vec::new())),
             slot_tiles: Arc::new(Mutex::new(Vec::new())),
@@ -136,7 +138,11 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn get_infos(&mut self) -> Vec<data::Result<DataSourceInfo>> {
-        std::mem::take(&mut self.infos.lock().unwrap())
+        let result = std::mem::take(&mut *self.infos.lock().unwrap());
+        if let Some(Ok(info)) = result.first() {
+            *self.info.lock().unwrap() = Some(info.clone());
+        }
+        result
     }
 
     fn fetch_summary_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
@@ -160,19 +166,36 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn fetch_slot_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
-        let req = TileRequestRef { entry_id, tile_id };
-        let mut url = self
-            .baseurl
-            .join("slot_tile/")
-            .and_then(|u| u.join(&req.to_slug()))
-            .expect("invalid baseurl");
-        url.set_query(Some(&format!("full={}", full)));
-        let extra = TileRequest {
+        let req = TileRequest {
             entry_id: entry_id.clone(),
             tile_id,
             full,
         };
-        self.request_extra::<SlotTile>(url, self.slot_tiles.clone(), extra);
+        {
+            let Some(ref info) = *self.info.lock().unwrap() else {
+                panic!("Must call fetch_info before calling other fetch methods");
+            };
+            if info.is_empty_tile(entry_id, tile_id) {
+                self.slot_tiles.lock().unwrap().push((
+                    Ok(SlotTile {
+                        entry_id: entry_id.to_owned(),
+                        tile_id,
+                        data: Default::default(),
+                    }),
+                    req,
+                ));
+                return;
+            }
+        }
+
+        let req_ref = TileRequestRef { entry_id, tile_id };
+        let mut url = self
+            .baseurl
+            .join("slot_tile/")
+            .and_then(|u| u.join(&req_ref.to_slug()))
+            .expect("invalid baseurl");
+        url.set_query(Some(&format!("full={}", full)));
+        self.request_extra::<SlotTile>(url, self.slot_tiles.clone(), req);
     }
 
     fn get_slot_tiles(&mut self) -> Vec<SlotTileResponse> {
@@ -180,6 +203,28 @@ impl DeferredDataSource for HTTPClientDataSource {
     }
 
     fn fetch_slot_meta_tile(&mut self, entry_id: &EntryID, tile_id: TileID, full: bool) {
+        let req = TileRequest {
+            entry_id: entry_id.clone(),
+            tile_id,
+            full,
+        };
+        {
+            let Some(ref info) = *self.info.lock().unwrap() else {
+                panic!("Must call fetch_info before calling other fetch methods");
+            };
+            if info.is_empty_tile(entry_id, tile_id) {
+                self.slot_meta_tiles.lock().unwrap().push((
+                    Ok(SlotMetaTile {
+                        entry_id: entry_id.to_owned(),
+                        tile_id,
+                        data: Default::default(),
+                    }),
+                    req,
+                ));
+                return;
+            }
+        }
+
         let req = TileRequestRef { entry_id, tile_id };
         let mut url = self
             .baseurl
