@@ -267,6 +267,40 @@ mod tests {
     }
 
     #[test]
+    fn request_static_adaptive() {
+        let int = Interval::new(Timestamp(0), Timestamp(100));
+        let req1 = Interval::new(Timestamp(10), Timestamp(60));
+        let req2 = Interval::new(Timestamp(40), Timestamp(60));
+        let ts = TileSet {
+            tiles: vec![
+                vec![TileID(int)],
+                vec![
+                    TileID(Interval::new(Timestamp(0), Timestamp(50))),
+                    TileID(Interval::new(Timestamp(50), Timestamp(100))),
+                ],
+                vec![
+                    TileID(Interval::new(Timestamp(0), Timestamp(50))),
+                    TileID(Interval::new(Timestamp(50), Timestamp(75))),
+                    TileID(Interval::new(Timestamp(75), Timestamp(100))),
+                ],
+            ],
+        };
+        let mut tm = TileManager::new(ts, int);
+        let res1 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(50))),
+            TileID(Interval::new(Timestamp(50), Timestamp(100))),
+        ];
+        let res2 = vec![
+            TileID(Interval::new(Timestamp(0), Timestamp(50))),
+            TileID(Interval::new(Timestamp(50), Timestamp(75))),
+        ];
+        // Query 1 returns the middle level even though the tile exists in both
+        // it and the last level.
+        assert_eq!(&tm.request_tiles(req1, false), &res1);
+        assert_eq!(&tm.request_tiles(req2, false), &res2);
+    }
+
+    #[test]
     fn request_dynamic_zoom_in() {
         let int = Interval::new(Timestamp(0), Timestamp(100));
         let req90 = Interval::new(Timestamp(0), Timestamp(90));
