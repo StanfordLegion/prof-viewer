@@ -404,6 +404,7 @@ mod tests {
             tile_set: TileSet { tiles: Vec::new() },
             field_schema: FieldSchema::new(),
             warning_message: None,
+            nonempty_tiles: NonemptyTiles::new(),
         };
         let second = DataSourceInfo {
             entry_info: EntryInfo::Panel {
@@ -420,6 +421,7 @@ mod tests {
             tile_set: TileSet { tiles: Vec::new() },
             field_schema: FieldSchema::new(),
             warning_message: None,
+            nonempty_tiles: NonemptyTiles::new(),
         };
 
         let infos = vec![first, second];
