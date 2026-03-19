@@ -6,6 +6,7 @@ use crate::timestamp::Interval;
 pub struct TileManager {
     tile_set: TileSet,
     interval: Interval,
+    duration_by_level: Vec<i64>,
     last_request_interval: (Option<Interval>, Option<Interval>), // full: false, true
     tile_cache: (Vec<TileID>, Vec<TileID>),                      // full: false, true
 }
@@ -32,9 +33,17 @@ fn reuse_cache<T: Clone, K>(cache: &[T], last_key: &mut Option<K>, key: K) -> Ve
 
 impl TileManager {
     pub fn new(tile_set: TileSet, interval: Interval) -> Self {
+        // Static profiles can have tiles of mixed sizes, so we need to
+        // precompute the minimum for use in comparisons later.
+        let duration_by_level = tile_set
+            .tiles
+            .iter()
+            .map(|level| level.iter().map(|tile| tile.0.duration_ns()).min().unwrap())
+            .collect();
         Self {
             tile_set,
             interval,
+            duration_by_level,
             last_request_interval: (None, None),
             tile_cache: (Vec::new(), Vec::new()),
         }
@@ -62,17 +71,20 @@ impl TileManager {
         // to be careful and always take the largest tile. Fortunately we only
         // need to check two, because (if the list has at least two elements),
         // one is guaranteed to be an interior tile.
-        let ratio = |level: &[TileID]| {
+        let ratio = |duration: i64| {
+            if duration < request_duration {
+                request_duration as f64 / duration as f64
+            } else {
+                duration as f64 / request_duration as f64
+            }
+        };
+        let level_ratio = |level: &[TileID]| {
             let mut it = level.iter();
             // Safe to assume at least one element because request_interval is non-empty
             let first = it.next().unwrap().0.duration_ns();
             let second = it.next();
             let d = second.map_or(first, |s| first.max(s.0.duration_ns()));
-            if d < request_duration {
-                request_duration as f64 / d as f64
-            } else {
-                d as f64 / request_duration as f64
-            }
+            ratio(d)
         };
 
         // Dynamic profile.
@@ -87,7 +99,7 @@ impl TileManager {
                 //  1. There is at least partial overlap with the new request.
                 //  2. We haven't drifted too far from the tile size requested before.
 
-                if ratio(tile_cache) <= 2.0 {
+                if level_ratio(tile_cache) <= 2.0 {
                     if cache_interval.0.contains_interval(request_interval) {
                         // Interval completely contained in the existing cache, just return it.
                         return reuse_cache(tile_cache, last_request_interval, request_interval);
@@ -154,8 +166,12 @@ impl TileManager {
             self.tile_set
                 .tiles
                 .iter()
-                .min_by(|level1, level2| ratio(level1).partial_cmp(&ratio(level2)).unwrap())
+                .zip(self.duration_by_level.iter())
+                .min_by(|&(_, duration1), &(_, duration2)| {
+                    ratio(*duration1).partial_cmp(&ratio(*duration2)).unwrap()
+                })
                 .unwrap()
+                .0
         };
 
         // Now filter to just tiles overlapping the requested interval.
