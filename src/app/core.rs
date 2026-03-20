@@ -17,14 +17,14 @@ use percentage::{Percentage, PercentageInteger};
 use regex::{Regex, escape};
 use serde::{Deserialize, Serialize};
 
-use crate::app::summary::convert_step_to_sample_utilization;
 use crate::app::tile_manager::TileManager;
 use crate::data::{
     self, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
-    ItemLink, ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryFormat, SummaryTileData,
+    ItemLink, ItemMeta, ItemUID, SampleFormat, SlotMetaTileData, SlotTileData, SummaryTileData,
     TileID, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource};
+use crate::summary::resample_step_utilization;
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };
@@ -168,7 +168,7 @@ struct Config {
     // This is just for the local profile
     interval: Interval,
     warning_message: Option<String>,
-    summary_format: SummaryFormat,
+    summary_format: SampleFormat,
 
     data_source: CountingDeferredDataSource<LruDeferredDataSource<Box<dyn DeferredDataSource>>>,
 
@@ -534,8 +534,7 @@ impl Entry for Summary {
 
             let utilization = match config.summary_format {
                 #[allow(deprecated)]
-                SummaryFormat::Sample => &tile.utilization,
-                SummaryFormat::Step => {
+                SampleFormat::Start => {
                     self.sample_cache.entry(*tile_id).or_insert_with(|| {
                         let interval = cx.view_interval.intersection(tile_id.0);
                         // We want roughly one sample per pixel, so compute the
@@ -544,9 +543,15 @@ impl Entry for Summary {
                         let num_samples = ((interval.duration_ns() as f32
                             / cx.view_interval.duration_ns() as f32)
                             * rect.width()) as u64;
-                        convert_step_to_sample_utilization(&tile.utilization, interval, num_samples)
+                        resample_step_utilization(
+                            &tile.utilization,
+                            interval,
+                            num_samples,
+                            SampleFormat::Center,
+                        )
                     })
                 }
+                SampleFormat::Center => &tile.utilization,
             };
 
             for util in utilization {

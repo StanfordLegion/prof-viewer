@@ -321,7 +321,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
 mod tests {
     use super::*;
 
-    use crate::data::{FieldSchema, SummaryFormat, TileSet};
+    use crate::data::{FieldSchema, SampleFormat, TileSet};
     use crate::timestamp::Timestamp;
 
     #[test]
@@ -408,7 +408,7 @@ mod tests {
             field_schema: FieldSchema::new(),
             warning_message: None,
             nonempty_tiles: NonemptyTiles::new(),
-            summary_format: SummaryFormat::Step,
+            summary_format: SampleFormat::Start,
         };
         let second = DataSourceInfo {
             entry_info: EntryInfo::Panel {
@@ -426,7 +426,7 @@ mod tests {
             field_schema: FieldSchema::new(),
             warning_message: None,
             nonempty_tiles: NonemptyTiles::new(),
-            summary_format: SummaryFormat::Step,
+            summary_format: SampleFormat::Start,
         };
 
         let infos = vec![first, second];

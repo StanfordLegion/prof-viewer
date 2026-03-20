@@ -35,8 +35,8 @@ pub struct DataSourceInfo {
     #[serde(default)]
     pub nonempty_tiles: NonemptyTiles,
 
-    #[serde(default = "SummaryFormat::sample")]
-    pub summary_format: SummaryFormat,
+    #[serde(default = "SampleFormat::center")]
+    pub summary_format: SampleFormat,
 }
 
 impl DataSourceInfo {
@@ -98,30 +98,16 @@ impl NonemptyTiles {
     }
 }
 
-// Serde generates serialization routines that use the deprecated
-// variants, and annotating the enum is insufficient, so generate an
-// enter module here so we can suppress the warnings
-pub use summary_format::SummaryFormat;
-mod summary_format {
-    #![allow(deprecated)] // Ok to use our own deprecated variants
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub enum SampleFormat {
+    Start,
+    Center,
+}
 
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Deserialize, Serialize)]
-    pub enum SummaryFormat {
-        #[deprecated(
-            since = "0.8.0",
-            note = "Sample summaries are deprecated and maintained only for backwards compatibility with existing profiles. Use step summaries for all future uses."
-        )]
-        Sample,
-        Step,
-    }
-
-    impl SummaryFormat {
-        // Required to make serde(default) happy, see: https://github.com/serde-rs/serde/issues/368
-        pub(crate) const fn sample() -> Self {
-            Self::Sample
-        }
+impl SampleFormat {
+    // Required to make serde(default) happy, see: https://github.com/serde-rs/serde/issues/368
+    pub(crate) const fn center() -> Self {
+        Self::Center
     }
 }
 
