@@ -135,6 +135,15 @@ impl Interval {
             stop: self.stop.min(point),
         }
     }
+    pub fn clamp_point(self, point: Timestamp) -> Timestamp {
+        if point < self.start {
+            return self.start;
+        }
+        if point >= self.stop {
+            return self.stop;
+        }
+        point
+    }
     // Convert a timestamp into [0,1] relative space
     pub fn unlerp(self, time: Timestamp) -> f32 {
         (time.0 - self.start.0) as f32 / (self.duration_ns() as f32)
@@ -571,6 +580,17 @@ mod tests {
                 i0.subtract_after(p2),
                 Interval::new(Timestamp(5), Timestamp(15))
             );
+        }
+
+        #[test]
+        fn test_clamp_point() {
+            let p0 = Timestamp(0);
+            let p1 = Timestamp(10);
+            let p2 = Timestamp(20);
+            let i0 = Interval::new(Timestamp(5), Timestamp(15));
+            assert_eq!(i0.clamp_point(p0), Timestamp(5));
+            assert_eq!(i0.clamp_point(p1), Timestamp(10));
+            assert_eq!(i0.clamp_point(p2), Timestamp(15));
         }
 
         #[test]

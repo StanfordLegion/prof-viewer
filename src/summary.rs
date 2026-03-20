@@ -1,6 +1,20 @@
 use crate::data::{SampleFormat, UtilPoint};
 use crate::timestamp::{Interval, Timestamp};
 
+pub fn slice_utilization(utilization: &[UtilPoint], interval: Interval) -> &[UtilPoint] {
+    let first_index = utilization
+        .partition_point(|p| p.time < interval.start)
+        .saturating_sub(1);
+
+    let mut last_index =
+        utilization[first_index..].partition_point(|p| p.time < interval.stop) + first_index;
+    if last_index + 1 < utilization.len() {
+        last_index += 1;
+    }
+
+    &utilization[first_index..last_index]
+}
+
 /// Resamples the provided step (i.e., start-sampled) utilization to the
 /// specified resolution and sample format.
 pub fn resample_step_utilization(
@@ -13,22 +27,14 @@ pub fn resample_step_utilization(
     let duration = interval.duration_ns();
     let num_samples = num_samples as i64;
 
-    let first_index = step_utilization
-        .partition_point(|p| p.time < interval.start)
-        .saturating_sub(1);
-
-    let mut last_index =
-        step_utilization[first_index..].partition_point(|p| p.time < interval.stop) + first_index;
-    if last_index + 1 < step_utilization.len() {
-        last_index += 1;
-    }
-
     let mut utilization = Vec::new();
     let mut last_p = UtilPoint {
         time: Timestamp(0),
         util: 0.0,
     };
-    let mut step_it = step_utilization[first_index..last_index].iter().peekable();
+    let mut step_it = slice_utilization(step_utilization, interval)
+        .iter()
+        .peekable();
     for sample in 0..num_samples {
         let sample_interval = Interval::new(
             Timestamp(duration * sample / num_samples + start_time),
