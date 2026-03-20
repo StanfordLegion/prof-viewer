@@ -98,11 +98,13 @@ impl MergeDeferredDataSource {
         let tile_set = first_info.tile_set.clone();
         let field_schema = first_info.field_schema.clone();
         let warning_message = first_info.warning_message.clone();
+        let summary_format = first_info.summary_format;
 
         for info in &source_infos {
             assert_eq!(tile_set, info.tile_set);
             assert_eq!(field_schema, info.field_schema);
             assert_eq!(warning_message, info.warning_message);
+            assert_eq!(summary_format, info.summary_format);
         }
 
         // Merge remaining fields
@@ -130,6 +132,7 @@ impl MergeDeferredDataSource {
             field_schema,
             warning_message,
             nonempty_tiles,
+            summary_format,
         }
     }
 
@@ -318,7 +321,7 @@ impl DeferredDataSource for MergeDeferredDataSource {
 mod tests {
     use super::*;
 
-    use crate::data::{FieldSchema, TileSet};
+    use crate::data::{FieldSchema, SummaryFormat, TileSet};
     use crate::timestamp::Timestamp;
 
     #[test]
@@ -405,6 +408,7 @@ mod tests {
             field_schema: FieldSchema::new(),
             warning_message: None,
             nonempty_tiles: NonemptyTiles::new(),
+            summary_format: SummaryFormat::Step,
         };
         let second = DataSourceInfo {
             entry_info: EntryInfo::Panel {
@@ -422,6 +426,7 @@ mod tests {
             field_schema: FieldSchema::new(),
             warning_message: None,
             nonempty_tiles: NonemptyTiles::new(),
+            summary_format: SummaryFormat::Step,
         };
 
         let infos = vec![first, second];

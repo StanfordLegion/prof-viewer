@@ -25,6 +25,7 @@ pub struct DataSourceInfo {
     pub interval: Interval,
     pub tile_set: TileSet,
     pub field_schema: FieldSchema,
+
     #[serde(default)]
     pub warning_message: Option<String>,
 
@@ -33,6 +34,9 @@ pub struct DataSourceInfo {
     // and the archiver will fill it automatically.
     #[serde(default)]
     pub nonempty_tiles: NonemptyTiles,
+
+    #[serde(default = "SummaryFormat::sample")]
+    pub summary_format: SummaryFormat,
 }
 
 impl DataSourceInfo {
@@ -91,6 +95,33 @@ impl NonemptyTiles {
             .entry(entry_id.to_owned())
             .or_default()
             .insert(tile_id);
+    }
+}
+
+// Serde generates serialization routines that use the deprecated
+// variants, and annotating the enum is insufficient, so generate an
+// enter module here so we can suppress the warnings
+pub use summary_format::SummaryFormat;
+mod summary_format {
+    #![allow(deprecated)] // Ok to use our own deprecated variants
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Deserialize, Serialize)]
+    pub enum SummaryFormat {
+        #[deprecated(
+            since = "0.8.0",
+            note = "Sample summaries are deprecated and maintained only for backwards compatibility with existing profiles. Use step summaries for all future uses."
+        )]
+        Sample,
+        Step,
+    }
+
+    impl SummaryFormat {
+        // Required to make serde(default) happy, see: https://github.com/serde-rs/serde/issues/368
+        pub(crate) const fn sample() -> Self {
+            Self::Sample
+        }
     }
 }
 

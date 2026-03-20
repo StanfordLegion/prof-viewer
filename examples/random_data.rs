@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use legion_prof_viewer::data::{
     self, DataSource, DataSourceDescription, DataSourceInfo, EntryID, EntryInfo, Field, FieldID,
     FieldSchema, Item, ItemField, ItemMeta, ItemUID, SlotMetaTile, SlotMetaTileData, SlotTile,
-    SlotTileData, SummaryTile, SummaryTileData, TileID, UtilPoint,
+    SlotTileData, SummaryFormat, SummaryTile, SummaryTileData, TileID, UtilPoint,
 };
 
 use legion_prof_viewer::deferred_data::DeferredDataSourceWrapper;
@@ -70,6 +70,7 @@ impl RandomDataSource {
             field_schema,
             warning_message: Some("Demo only. The data in this profile is synthetic.".to_string()),
             nonempty_tiles: Default::default(),
+            summary_format: SummaryFormat::Step,
         };
 
         let state = RandomState {

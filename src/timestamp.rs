@@ -99,6 +99,9 @@ impl Interval {
     pub fn duration_ns(self) -> i64 {
         self.stop.0 - self.start.0
     }
+    pub fn is_empty(self) -> bool {
+        self.stop.0 <= self.start.0
+    }
     pub fn contains(self, point: Timestamp) -> bool {
         self.start <= point && point < self.stop
     }
@@ -450,6 +453,14 @@ mod tests {
             let i1 = Interval::new(Timestamp(0), Timestamp(0));
             assert_eq!(i0.duration_ns(), 10);
             assert_eq!(i1.duration_ns(), 0);
+        }
+
+        #[test]
+        fn test_is_empty() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(5), Timestamp(5));
+            assert!(!i0.is_empty());
+            assert!(i1.is_empty());
         }
 
         #[test]
