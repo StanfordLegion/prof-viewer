@@ -533,7 +533,6 @@ impl Entry for Summary {
             };
 
             let utilization = match config.sample_format {
-                #[allow(deprecated)]
                 SampleFormat::Start => {
                     self.sample_cache.entry(*tile_id).or_insert_with(|| {
                         let interval = cx.view_interval.intersection(tile_id.0);
