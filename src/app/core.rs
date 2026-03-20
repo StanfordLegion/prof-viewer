@@ -20,10 +20,11 @@ use serde::{Deserialize, Serialize};
 use crate::app::tile_manager::TileManager;
 use crate::data::{
     self, DataSourceInfo, EntryID, EntryIndex, EntryInfo, Field, FieldID, FieldSchema, ItemField,
-    ItemLink, ItemMeta, ItemUID, SlotMetaTileData, SlotTileData, SummaryTileData, TileID,
-    UtilPoint,
+    ItemLink, ItemMeta, ItemUID, SampleFormat, SlotMetaTileData, SlotTileData, SummaryTileData,
+    TileID, UtilPoint,
 };
 use crate::deferred_data::{CountingDeferredDataSource, DeferredDataSource, LruDeferredDataSource};
+use crate::summary::resample_step_utilization;
 use crate::timestamp::{
     Interval, Timestamp, TimestampDisplay, TimestampParseError, TimestampUnits,
 };
@@ -63,6 +64,8 @@ struct Summary {
     entry_id: EntryID,
     color: Color32,
     tiles: BTreeMap<TileID, Option<data::Result<SummaryTileData>>>,
+    sample_cache: BTreeMap<TileID, Vec<UtilPoint>>,
+    last_view_interval: Option<Interval>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,6 +168,7 @@ struct Config {
     // This is just for the local profile
     interval: Interval,
     warning_message: Option<String>,
+    sample_format: SampleFormat,
 
     data_source: CountingDeferredDataSource<LruDeferredDataSource<Box<dyn DeferredDataSource>>>,
 
@@ -415,6 +419,8 @@ impl Entry for Summary {
                 entry_id,
                 color: *color,
                 tiles: BTreeMap::new(),
+                sample_cache: BTreeMap::new(),
+                last_view_interval: None,
             }
         } else {
             unreachable!()
@@ -497,21 +503,57 @@ impl Entry for Summary {
             Rect::from_min_max(p1, p2).lerp_inside(Vec2::new(ratio, ratio))
         };
 
-        let mut last_util: Option<&UtilPoint> = None;
+        // Clear the sample cache if the view changed
+        if self.last_view_interval != Some(cx.view_interval) {
+            self.sample_cache.clear();
+            self.last_view_interval = Some(cx.view_interval);
+        }
+
+        let mut last_util: Option<UtilPoint> = None;
         let mut last_point: Option<Pos2> = None;
         let mut hover_util = None;
-        for tile in self.tiles.values().flatten() {
+        for (tile_id, tile) in &self.tiles {
+            // Draw empty if not loaded yet
+            let Some(tile) = tile else {
+                last_util = None;
+                last_point = None;
+                continue;
+            };
+
+            // Draw a red rectangle if there is an error
             let tile = match tile {
                 Ok(t) => t,
                 Err(e) => {
                     warn!("{}", e);
-                    // Paint the entire tile red to indicate the error.
                     ui.painter().rect(rect, 0.0, Color32::RED, Stroke::NONE);
-                    return;
+                    last_util = None;
+                    last_point = None;
+                    continue;
                 }
             };
 
-            for util in &tile.utilization {
+            let utilization = match config.sample_format {
+                SampleFormat::Start => {
+                    self.sample_cache.entry(*tile_id).or_insert_with(|| {
+                        let interval = cx.view_interval.intersection(tile_id.0);
+                        // We want roughly one sample per pixel, so compute the
+                        // amount of screen space we're using for this tile in
+                        // the current view
+                        let num_samples = ((interval.duration_ns() as f32
+                            / cx.view_interval.duration_ns() as f32)
+                            * rect.width()) as u64;
+                        resample_step_utilization(
+                            &tile.utilization,
+                            interval,
+                            num_samples,
+                            SampleFormat::Center,
+                        )
+                    })
+                }
+                SampleFormat::Center => &tile.utilization,
+            };
+
+            for util in utilization {
                 let mut point = util_to_screen(util);
                 if let Some(mut last) = last_point {
                     let last_util = last_util.unwrap();
@@ -544,7 +586,7 @@ impl Entry for Summary {
                 }
 
                 last_point = Some(point);
-                last_util = Some(util);
+                last_util = Some(*util);
             }
         }
 
@@ -1409,6 +1451,7 @@ impl Config {
         let interval = info.interval;
         let tile_set = info.tile_set;
         let warning_message = info.warning_message;
+        let sample_format = info.sample_format;
 
         let mut field_schema = info.field_schema;
         assert!(!field_schema.contains_name("Title"));
@@ -1423,6 +1466,7 @@ impl Config {
             kind_filter: BTreeSet::new(),
             interval,
             warning_message,
+            sample_format,
             data_source: CountingDeferredDataSource::new(LruDeferredDataSource::new(
                 data_source,
                 NonZeroUsize::new(1024).unwrap(),

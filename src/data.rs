@@ -25,6 +25,7 @@ pub struct DataSourceInfo {
     pub interval: Interval,
     pub tile_set: TileSet,
     pub field_schema: FieldSchema,
+
     #[serde(default)]
     pub warning_message: Option<String>,
 
@@ -33,6 +34,9 @@ pub struct DataSourceInfo {
     // and the archiver will fill it automatically.
     #[serde(default)]
     pub nonempty_tiles: NonemptyTiles,
+
+    #[serde(default = "SampleFormat::center")]
+    pub sample_format: SampleFormat,
 }
 
 impl DataSourceInfo {
@@ -91,6 +95,19 @@ impl NonemptyTiles {
             .entry(entry_id.to_owned())
             .or_default()
             .insert(tile_id);
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub enum SampleFormat {
+    Start,
+    Center,
+}
+
+impl SampleFormat {
+    // Required to make serde(default) happy, see: https://github.com/serde-rs/serde/issues/368
+    pub(crate) const fn center() -> Self {
+        Self::Center
     }
 }
 

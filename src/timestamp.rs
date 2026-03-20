@@ -99,6 +99,9 @@ impl Interval {
     pub fn duration_ns(self) -> i64 {
         self.stop.0 - self.start.0
     }
+    pub fn is_empty(self) -> bool {
+        self.stop.0 <= self.start.0
+    }
     pub fn contains(self, point: Timestamp) -> bool {
         self.start <= point && point < self.stop
     }
@@ -131,6 +134,15 @@ impl Interval {
             start: self.start.min(point),
             stop: self.stop.min(point),
         }
+    }
+    pub fn clamp_point(self, point: Timestamp) -> Timestamp {
+        if point < self.start {
+            return self.start;
+        }
+        if point >= self.stop {
+            return self.stop;
+        }
+        point
     }
     // Convert a timestamp into [0,1] relative space
     pub fn unlerp(self, time: Timestamp) -> f32 {
@@ -453,6 +465,14 @@ mod tests {
         }
 
         #[test]
+        fn test_is_empty() {
+            let i0 = Interval::new(Timestamp(0), Timestamp(10));
+            let i1 = Interval::new(Timestamp(5), Timestamp(5));
+            assert!(!i0.is_empty());
+            assert!(i1.is_empty());
+        }
+
+        #[test]
         fn test_contains() {
             // Intervals are exclusive: they do NOT contain stop
             let i0 = Interval::new(Timestamp(2), Timestamp(4));
@@ -560,6 +580,17 @@ mod tests {
                 i0.subtract_after(p2),
                 Interval::new(Timestamp(5), Timestamp(15))
             );
+        }
+
+        #[test]
+        fn test_clamp_point() {
+            let p0 = Timestamp(0);
+            let p1 = Timestamp(10);
+            let p2 = Timestamp(20);
+            let i0 = Interval::new(Timestamp(5), Timestamp(15));
+            assert_eq!(i0.clamp_point(p0), Timestamp(5));
+            assert_eq!(i0.clamp_point(p1), Timestamp(10));
+            assert_eq!(i0.clamp_point(p2), Timestamp(15));
         }
 
         #[test]
