@@ -694,8 +694,8 @@ impl Slot {
             return hover_pos;
         }
 
-        // Figure out roughly how large a pixel is on the screen.
-        let pixel_ns = (cx.view_interval.duration_ns() as f32 / rect.width()) as i64;
+        // Figure out roughly how large two pixels are on the screen.
+        let two_pixel_ns = ((2 * cx.view_interval.duration_ns()) as f32 / rect.width()) as i64;
 
         // Track which item, if any, we're interacting with
         let mut interact_item = None;
@@ -729,11 +729,11 @@ impl Slot {
                     continue;
                 }
 
-                // Expand interval to use at least one pixel, but do NOT
+                // Expand interval to use at least two pixels, but do NOT
                 // overlap neighboring items.
                 let mut interval = item.interval;
-                if interval.duration_ns() < pixel_ns {
-                    let expand_ns = (pixel_ns - interval.duration_ns()) / 2;
+                if interval.duration_ns() < two_pixel_ns {
+                    let expand_ns = (two_pixel_ns - interval.duration_ns()) / 2;
                     interval = interval.grow(expand_ns).intersection(tile_id.0);
                     if item_idx > 0 {
                         let last_item = &row_items[item_idx - 1];
