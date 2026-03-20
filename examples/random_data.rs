@@ -70,7 +70,7 @@ impl RandomDataSource {
             field_schema,
             warning_message: Some("Demo only. The data in this profile is synthetic.".to_string()),
             nonempty_tiles: Default::default(),
-            summary_format: SampleFormat::Center,
+            sample_format: SampleFormat::Center,
         };
 
         let state = RandomState {

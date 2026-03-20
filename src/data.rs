@@ -36,7 +36,7 @@ pub struct DataSourceInfo {
     pub nonempty_tiles: NonemptyTiles,
 
     #[serde(default = "SampleFormat::center")]
-    pub summary_format: SampleFormat,
+    pub sample_format: SampleFormat,
 }
 
 impl DataSourceInfo {

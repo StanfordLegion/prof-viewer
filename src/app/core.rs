@@ -168,7 +168,7 @@ struct Config {
     // This is just for the local profile
     interval: Interval,
     warning_message: Option<String>,
-    summary_format: SampleFormat,
+    sample_format: SampleFormat,
 
     data_source: CountingDeferredDataSource<LruDeferredDataSource<Box<dyn DeferredDataSource>>>,
 
@@ -532,7 +532,7 @@ impl Entry for Summary {
                 }
             };
 
-            let utilization = match config.summary_format {
+            let utilization = match config.sample_format {
                 #[allow(deprecated)]
                 SampleFormat::Start => {
                     self.sample_cache.entry(*tile_id).or_insert_with(|| {
@@ -1452,7 +1452,7 @@ impl Config {
         let interval = info.interval;
         let tile_set = info.tile_set;
         let warning_message = info.warning_message;
-        let summary_format = info.summary_format;
+        let sample_format = info.sample_format;
 
         let mut field_schema = info.field_schema;
         assert!(!field_schema.contains_name("Title"));
@@ -1467,7 +1467,7 @@ impl Config {
             kind_filter: BTreeSet::new(),
             interval,
             warning_message,
-            summary_format,
+            sample_format,
             data_source: CountingDeferredDataSource::new(LruDeferredDataSource::new(
                 data_source,
                 NonZeroUsize::new(1024).unwrap(),
